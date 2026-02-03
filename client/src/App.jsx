@@ -10,8 +10,17 @@ function App() {
   const [columns, setColumns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cartItems, setCartItems] = useState([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cartSyncError, setCartSyncError] = useState(null);
 
   const API_URL = "http://localhost:5000/api";
+  const RAILWAY_BASE_URL = "https://test-9she.onrender.com";
+  const ECOM_BASE_URL = "https://ecommerce-integration.onrender.com";
+  const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "1";
+  const RAILWAY_CART_ID = import.meta.env.VITE_RAILWAY_CART_ID || "1";
+  const RAILWAY_AUTH_TOKEN = import.meta.env.VITE_RAILWAY_AUTH_TOKEN || "";
+  const ECOM_AUTH_TOKEN = import.meta.env.VITE_ECOM_AUTH_TOKEN || "";
 
   // Fetch databases on mount
   useEffect(() => {
@@ -78,15 +87,310 @@ function App() {
     }
   };
 
+  const getValueCaseInsensitive = (row, aliases) => {
+    const keyMap = Object.keys(row || {}).reduce((acc, key) => {
+      acc[key.toLowerCase()] = key;
+      return acc;
+    }, {});
+
+    for (const alias of aliases) {
+      const foundKey = keyMap[alias.toLowerCase()];
+      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
+        return row[foundKey];
+      }
+    }
+
+    return null;
+  };
+
+  const normalizePrice = (value) => {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const findNumericId = (row) => {
+    const candidates =
+      selectedDb === "railway"
+        ? ["product_id", "productid", "id"]
+        : ["id", "product_id", "productid", "catalogitemid", "itemid"];
+    for (const key of candidates) {
+      const value = getValueCaseInsensitive(row, [key]);
+      if (value !== null && value !== undefined && value !== "") {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+    }
+    return null;
+  };
+
+  const buildCartItem = (row, rowIndex) => {
+    const numericId = findNumericId(row);
+    const name = getValueCaseInsensitive(row, [
+      "name",
+      "title",
+      "productname",
+      "itemname",
+    ]);
+    const price = normalizePrice(
+      getValueCaseInsensitive(row, ["price", "unitprice", "cost", "amount"]),
+    );
+
+    const displayName = name ?? `Item ${rowIndex + 1}`;
+    const safeId = numericId ?? `${selectedDb}-${selectedTable}-${rowIndex}`;
+
+    return {
+      key: `${selectedDb}-${selectedTable}-${safeId}`,
+      id: safeId,
+      name: displayName,
+      price,
+      quantity: 1,
+      sourceDb: selectedDb,
+      sourceTable: selectedTable,
+      raw: row,
+    };
+  };
+
+  const fetchEcomCartMap = async () => {
+    const headers = {};
+    if (ECOM_AUTH_TOKEN) {
+      headers.Authorization = `Bearer ${ECOM_AUTH_TOKEN}`;
+    }
+    const response = await fetch(`${ECOM_BASE_URL}/api/cart`, {
+      credentials: "include",
+      headers,
+    });
+    const data = await response.json();
+
+    return (Array.isArray(data) ? data : []).reduce((acc, entry) => {
+      const productId =
+        entry?.product?.id ?? entry?.productId ?? entry?.product_id;
+      if (productId !== undefined && productId !== null) {
+        acc[String(productId)] = {
+          cartItemId: entry.id,
+          quantity: entry.quantity,
+        };
+      }
+      return acc;
+    }, {});
+  };
+
+  const buildCartRequest = (item, action, quantity) => {
+    if (!item.id) {
+      setCartSyncError("Product is missing id. Cannot sync cart.");
+      return null;
+    }
+
+    if (item.sourceDb === "microservice") {
+      const headers = {
+        "Content-Type": "application/json",
+      };
+      if (ECOM_AUTH_TOKEN) {
+        headers.Authorization = `Bearer ${ECOM_AUTH_TOKEN}`;
+      }
+      if (action === "add") {
+        return {
+          url: `${ECOM_BASE_URL}/api/cart/add`,
+          options: {
+            method: "POST",
+            headers,
+            credentials: "include",
+            body: JSON.stringify({ productId: item.id }),
+          },
+        };
+      }
+
+      return {
+        resolve: async () => {
+          const map = await fetchEcomCartMap();
+          const entry = map[String(item.id)];
+          if (!entry) {
+            return null;
+          }
+
+          if (action === "remove" || quantity <= 0) {
+            return {
+              url: `${ECOM_BASE_URL}/api/cart/${entry.cartItemId}`,
+              options: {
+                method: "DELETE",
+                headers,
+                credentials: "include",
+              },
+            };
+          }
+
+          return {
+            url: `${ECOM_BASE_URL}/api/cart/${entry.cartItemId}`,
+            options: {
+              method: "PUT",
+              headers,
+              credentials: "include",
+              body: JSON.stringify({ quantity }),
+            },
+          };
+        },
+      };
+    }
+
+    if (item.sourceDb === "railway") {
+      const headers = {};
+      if (RAILWAY_AUTH_TOKEN) {
+        headers.Authorization = `Bearer ${RAILWAY_AUTH_TOKEN}`;
+      }
+      if (action === "add") {
+        return {
+          url: `${RAILWAY_BASE_URL}/ecom/cart/add-product?userId=${RAILWAY_USER_ID}&productId=${item.id}`,
+          options: {
+            method: "POST",
+            credentials: "include",
+            headers,
+          },
+        };
+      }
+
+      if (action === "increase") {
+        return {
+          url: `${RAILWAY_BASE_URL}/ecom/cart/increase-productQty/${RAILWAY_CART_ID}/${item.id}`,
+          options: {
+            method: "PUT",
+            credentials: "include",
+            headers,
+          },
+        };
+      }
+
+      if (action === "decrease") {
+        return {
+          url: `${RAILWAY_BASE_URL}/ecom/cart/decrease-productQty/${RAILWAY_CART_ID}/${item.id}`,
+          options: {
+            method: "PUT",
+            credentials: "include",
+            headers,
+          },
+        };
+      }
+
+      if (action === "remove" || quantity <= 0) {
+        return {
+          url: `${RAILWAY_BASE_URL}/ecom/cart/remove-product/${RAILWAY_CART_ID}/${item.id}`,
+          options: {
+            method: "DELETE",
+            credentials: "include",
+            headers,
+          },
+        };
+      }
+    }
+
+    return null;
+  };
+
+  const syncCartItem = async (item, action, quantity) => {
+    const request = buildCartRequest(item, action, quantity);
+    if (!request) {
+      return;
+    }
+
+    try {
+      setCartSyncError(null);
+      const resolved = request.resolve ? await request.resolve() : request;
+      if (!resolved) {
+        return;
+      }
+      await fetch(resolved.url, resolved.options);
+    } catch (err) {
+      setCartSyncError(
+        `Failed to sync cart to ${item.sourceDb}: ${err.message}`,
+      );
+    }
+  };
+
+  const addToCart = async (row, rowIndex) => {
+    const item = buildCartItem(row, rowIndex);
+    if (!Number.isFinite(Number(item.id))) {
+      setCartSyncError(
+        "ProductId must be numeric for cart APIs. Please map the correct id column.",
+      );
+      return;
+    }
+    const existing = cartItems.find((entry) => entry.key === item.key);
+    const nextQuantity = existing ? existing.quantity + 1 : 1;
+
+    setCartItems((prev) => {
+      const entry = prev.find((stored) => stored.key === item.key);
+      if (entry) {
+        return prev.map((stored) =>
+          stored.key === item.key
+            ? { ...stored, quantity: stored.quantity + 1 }
+            : stored,
+        );
+      }
+      return [...prev, item];
+    });
+
+    await syncCartItem(item, "add", nextQuantity);
+  };
+
+  const updateCartQuantity = async (key, delta) => {
+    let updatedItem = null;
+    let nextQuantity = 0;
+
+    setCartItems((prev) => {
+      return prev
+        .map((item) => {
+          if (item.key !== key) {
+            return item;
+          }
+          const quantity = Math.max(item.quantity + delta, 0);
+          updatedItem = { ...item, quantity };
+          nextQuantity = quantity;
+          return updatedItem;
+        })
+        .filter((item) => item.quantity > 0);
+    });
+
+    if (updatedItem) {
+      if (nextQuantity === 0) {
+        await syncCartItem(updatedItem, "remove", nextQuantity);
+      } else {
+        const action = delta > 0 ? "increase" : "decrease";
+        await syncCartItem(updatedItem, action, nextQuantity);
+      }
+    }
+  };
+
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = cartItems.reduce(
+    (sum, item) => sum + (item.price ?? 0) * item.quantity,
+    0,
+  );
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Multi Database Viewer</h1>
-        <p>View data from multiple MySQL databases</p>
+        <div className="header-content">
+          <div>
+            <h1>Multi Database Viewer</h1>
+            <p>View data from multiple MySQL databases</p>
+          </div>
+          <button
+            className="cart-button"
+            onClick={() => setCartOpen((open) => !open)}
+          >
+            🛒 Cart <span className="cart-count">{cartCount}</span>
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
         {error && <div className="error-message">⚠️ {error}</div>}
+        {cartSyncError && (
+          <div className="error-message">⚠️ {cartSyncError}</div>
+        )}
 
         <div className="container">
           {/* Database Selection */}
@@ -162,6 +466,12 @@ function App() {
                                 </div>
                               </th>
                             ))}
+                            <th>
+                              <div>
+                                <div className="col-name">Actions</div>
+                                <div className="col-type">Cart</div>
+                              </div>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -180,6 +490,14 @@ function App() {
                                   )}
                                 </td>
                               ))}
+                              <td>
+                                <button
+                                  className="add-cart-button"
+                                  onClick={() => addToCart(row, rowIndex)}
+                                >
+                                  Add to cart
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -194,6 +512,61 @@ function App() {
           )}
         </div>
       </main>
+
+      {cartOpen && (
+        <div className="cart-drawer">
+          <div className="cart-header">
+            <h2>Shopping Cart</h2>
+            <button className="cart-close" onClick={() => setCartOpen(false)}>
+              ✕
+            </button>
+          </div>
+
+          {cartItems.length === 0 ? (
+            <p className="cart-empty">Your cart is empty.</p>
+          ) : (
+            <div className="cart-items">
+              {cartItems.map((item) => (
+                <div key={item.key} className="cart-item">
+                  <div className="cart-item-info">
+                    <div className="cart-item-name">{item.name}</div>
+                    <div className="cart-item-meta">
+                      <span>{item.sourceDb}</span>
+                      <span>•</span>
+                      <span>{item.sourceTable}</span>
+                    </div>
+                    <div className="cart-item-price">
+                      {item.price !== null ? `$${item.price}` : "Price N/A"}
+                    </div>
+                  </div>
+                  <div className="cart-qty">
+                    <button
+                      className="qty-button"
+                      onClick={() => updateCartQuantity(item.key, -1)}
+                    >
+                      −
+                    </button>
+                    <span>{item.quantity}</span>
+                    <button
+                      className="qty-button"
+                      onClick={() => updateCartQuantity(item.key, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="cart-footer">
+            <div className="cart-total">
+              <span>Total</span>
+              <strong>${cartTotal.toFixed(2)}</strong>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
