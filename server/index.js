@@ -313,6 +313,7 @@ function buildForwardHeaders(req, extraHeaders = {}, authFallback = "") {
 app.post("/api/proxy/railway/add-product", async (req, res) => {
   const userId = req.query.userId || req.body.userId;
   const productId = req.query.productId || req.body.productId;
+  const cartId = req.query.cartId || req.body.cartId;
 
   if (!userId || !productId) {
     return res.status(400).json({ error: "Missing userId or productId" });
@@ -323,7 +324,14 @@ app.post("/api/proxy/railway/add-product", async (req, res) => {
   url.searchParams.set("productId", productId);
 
   try {
-    const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+    const headers = buildForwardHeaders(
+      req,
+      {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      RAILWAY_AUTH_TOKEN,
+    );
     console.log("Railway add-product", {
       url: url.toString(),
       hasAuth: Boolean(headers.Authorization),
@@ -333,6 +341,34 @@ app.post("/api/proxy/railway/add-product", async (req, res) => {
       method: "POST",
       headers,
     });
+    console.log("Railway add-product response", {
+      status: result.status,
+      data: result.data,
+    });
+
+    const alreadyInCart =
+      result.status === 502 &&
+      typeof result.data?.message === "string" &&
+      result.data.message
+        .toLowerCase()
+        .includes("already in the cart");
+
+    if (alreadyInCart && cartId) {
+      const increaseUrl = new URL(
+        `/ecom/cart/increase-productQty/${cartId}/${productId}`,
+        RAILWAY_BASE_URL,
+      );
+      const increaseResult = await forwardRequest(increaseUrl.toString(), {
+        method: "PUT",
+        headers,
+      });
+      console.log("Railway add-product fallback increase", {
+        status: increaseResult.status,
+        data: increaseResult.data,
+      });
+      return res.status(increaseResult.status).json(increaseResult.data);
+    }
+
     return res.status(result.status).json(result.data);
   } catch (error) {
     console.error("Railway proxy failed:", error?.message || error);
@@ -352,7 +388,14 @@ app.put(
     );
 
     try {
-      const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+      const headers = buildForwardHeaders(
+        req,
+        {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        RAILWAY_AUTH_TOKEN,
+      );
       console.log("Railway increase-productQty", {
         url: url.toString(),
         hasAuth: Boolean(headers.Authorization),
@@ -360,6 +403,10 @@ app.put(
       const result = await forwardRequest(url.toString(), {
         method: "PUT",
         headers,
+      });
+      console.log("Railway increase-productQty response", {
+        status: result.status,
+        data: result.data,
       });
       return res.status(result.status).json(result.data);
     } catch (error) {
@@ -381,7 +428,14 @@ app.put(
     );
 
     try {
-      const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+      const headers = buildForwardHeaders(
+        req,
+        {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        RAILWAY_AUTH_TOKEN,
+      );
       console.log("Railway decrease-productQty", {
         url: url.toString(),
         hasAuth: Boolean(headers.Authorization),
@@ -389,6 +443,10 @@ app.put(
       const result = await forwardRequest(url.toString(), {
         method: "PUT",
         headers,
+      });
+      console.log("Railway decrease-productQty response", {
+        status: result.status,
+        data: result.data,
       });
       return res.status(result.status).json(result.data);
     } catch (error) {
@@ -410,7 +468,14 @@ app.delete(
     );
 
     try {
-      const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+      const headers = buildForwardHeaders(
+        req,
+        {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        RAILWAY_AUTH_TOKEN,
+      );
       console.log("Railway remove-product", {
         url: url.toString(),
         hasAuth: Boolean(headers.Authorization),
@@ -418,6 +483,10 @@ app.delete(
       const result = await forwardRequest(url.toString(), {
         method: "DELETE",
         headers,
+      });
+      console.log("Railway remove-product response", {
+        status: result.status,
+        data: result.data,
       });
       return res.status(result.status).json(result.data);
     } catch (error) {

@@ -14,7 +14,7 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [cartSyncError, setCartSyncError] = useState(null);
 
-  const API_URL = "http://localhost:5000/api";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
   const RAILWAY_BASE_URL = "https://test-9she.onrender.com";
   const ECOM_BASE_URL = "https://ecommerce-integration.onrender.com";
   const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "1";
@@ -238,12 +238,9 @@ function App() {
 
     if (item.sourceDb === "railway") {
       const headers = {};
-      if (RAILWAY_AUTH_TOKEN) {
-        headers.Authorization = `Bearer ${RAILWAY_AUTH_TOKEN}`;
-      }
       if (action === "add") {
         return {
-          url: `${RAILWAY_BASE_URL}/ecom/cart/add-product?userId=${RAILWAY_USER_ID}&productId=${item.id}`,
+          url: `${API_URL}/proxy/railway/add-product?userId=${RAILWAY_USER_ID}&productId=${item.id}&cartId=${RAILWAY_CART_ID}`,
           options: {
             method: "POST",
             credentials: "include",
@@ -254,7 +251,7 @@ function App() {
 
       if (action === "increase") {
         return {
-          url: `${RAILWAY_BASE_URL}/ecom/cart/increase-productQty/${RAILWAY_CART_ID}/${item.id}`,
+          url: `${API_URL}/proxy/railway/increase-productQty/${RAILWAY_CART_ID}/${item.id}`,
           options: {
             method: "PUT",
             credentials: "include",
@@ -265,7 +262,7 @@ function App() {
 
       if (action === "decrease") {
         return {
-          url: `${RAILWAY_BASE_URL}/ecom/cart/decrease-productQty/${RAILWAY_CART_ID}/${item.id}`,
+          url: `${API_URL}/proxy/railway/decrease-productQty/${RAILWAY_CART_ID}/${item.id}`,
           options: {
             method: "PUT",
             credentials: "include",
@@ -276,7 +273,7 @@ function App() {
 
       if (action === "remove" || quantity <= 0) {
         return {
-          url: `${RAILWAY_BASE_URL}/ecom/cart/remove-product/${RAILWAY_CART_ID}/${item.id}`,
+          url: `${API_URL}/proxy/railway/remove-product/${RAILWAY_CART_ID}/${item.id}`,
           options: {
             method: "DELETE",
             credentials: "include",
