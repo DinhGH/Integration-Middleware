@@ -24,6 +24,7 @@ multi-db-app/
 
 1. **Railway DB**: `mysql://product_reader:StrongPassword123@nozomi.proxy.rlwy.net:42912/railway`
 2. **Microservice DB**: `mysql://product_reader:StrongPassword123!@caboose.proxy.rlwy.net:59089/microservice`
+3. **PhoneStore DB** (optional): cấu hình qua `PHONESTORE_DATABASE_URL` trong `.env`
 
 ## Cài Đặt
 

@@ -11,6 +11,10 @@ const RAILWAY_BASE_URL =
   process.env.RAILWAY_BASE_URL || "https://test-9she.onrender.com";
 const ECOM_BASE_URL =
   process.env.ECOM_BASE_URL || "https://ecommerce-integration.onrender.com";
+const PHONESTORE_BASE_URL =
+  process.env.PHONESTORE_BASE_URL || "https://phone-store-dinh.vercel.app";
+const PHONESTORE_DATABASE_URL =
+  process.env.PHONESTORE_DATABASE_URL || process.env.DATABASE_URL || "";
 const RAILWAY_AUTH_TOKEN = process.env.RAILWAY_AUTH_TOKEN || "";
 const ECOM_AUTH_TOKEN = process.env.ECOM_AUTH_TOKEN || "";
 
@@ -36,6 +40,26 @@ async function forwardRequest(url, options = {}) {
   return { status: response.status, data };
 }
 
+function parseMysqlUrl(connectionString) {
+  if (!connectionString) return null;
+  try {
+    const url = new URL(connectionString);
+    return {
+      type: "mysql",
+      host: url.hostname,
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      database: url.pathname.replace(/^\//, ""),
+      port: Number(url.port) || 3306,
+    };
+  } catch (error) {
+    console.error("Invalid MySQL connection string:", error);
+    return null;
+  }
+}
+
+const phoneStoreDbConfig = parseMysqlUrl(PHONESTORE_DATABASE_URL);
+
 // Database configurations
 const dbConfigs = {
   railway: {
@@ -54,6 +78,7 @@ const dbConfigs = {
     database: "microservice",
     port: 59089,
   },
+  ...(phoneStoreDbConfig ? { phonewebsite: phoneStoreDbConfig } : {}),
 };
 
 // Create connection pools for both databases
@@ -293,9 +318,7 @@ app.get("/api/health", (req, res) => {
 
 function normalizeBearerToken(token) {
   if (!token) return "";
-  return token.toLowerCase().startsWith("bearer ")
-    ? token
-    : `Bearer ${token}`;
+  return token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
 }
 
 function buildForwardHeaders(req, extraHeaders = {}, authFallback = "") {
@@ -307,6 +330,11 @@ function buildForwardHeaders(req, extraHeaders = {}, authFallback = "") {
   }
   if (req.headers.cookie) headers.Cookie = req.headers.cookie;
   return headers;
+}
+
+function buildPhoneStoreCookie(username) {
+  if (!username) return "";
+  return `user=${encodeURIComponent(username)}`;
 }
 
 // Proxy: Railway cart
@@ -349,9 +377,7 @@ app.post("/api/proxy/railway/add-product", async (req, res) => {
     const alreadyInCart =
       result.status === 502 &&
       typeof result.data?.message === "string" &&
-      result.data.message
-        .toLowerCase()
-        .includes("already in the cart");
+      result.data.message.toLowerCase().includes("already in the cart");
 
     if (alreadyInCart && cartId) {
       const increaseUrl = new URL(
@@ -594,6 +620,84 @@ app.delete("/api/proxy/ecom/cart/:id", async (req, res) => {
     return res
       .status(502)
       .json({ error: "Ecommerce proxy failed", detail: error?.message });
+  }
+});
+
+// Proxy: PhoneStore cart
+app.get("/api/proxy/phonestore/cart", async (req, res) => {
+  const username = req.query.username;
+  if (!username) {
+    return res.status(400).json({ error: "Missing username" });
+  }
+
+  const url = new URL("/api/cart", PHONESTORE_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, "");
+    headers.Cookie = buildPhoneStoreCookie(username);
+
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("PhoneStore proxy failed:", error?.message || error);
+    return res
+      .status(502)
+      .json({ error: "PhoneStore proxy failed", detail: error?.message });
+  }
+});
+
+app.post("/api/proxy/phonestore/cart", async (req, res) => {
+  const url = new URL("/api/cart", PHONESTORE_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(
+      req,
+      {
+        "Content-Type": "application/json",
+      },
+      "",
+    );
+
+    const result = await forwardRequest(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req.body || {}),
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("PhoneStore proxy failed:", error?.message || error);
+    return res
+      .status(502)
+      .json({ error: "PhoneStore proxy failed", detail: error?.message });
+  }
+});
+
+app.delete("/api/proxy/phonestore/cart", async (req, res) => {
+  const { id, username } = req.query;
+  if (!id) {
+    return res.status(400).json({ error: "Missing id" });
+  }
+
+  const url = new URL("/api/cart", PHONESTORE_BASE_URL);
+  url.searchParams.set("id", id);
+
+  try {
+    const headers = buildForwardHeaders(req, {}, "");
+    if (username) {
+      headers.Cookie = buildPhoneStoreCookie(username);
+    }
+
+    const result = await forwardRequest(url.toString(), {
+      method: "DELETE",
+      headers,
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("PhoneStore proxy failed:", error?.message || error);
+    return res
+      .status(502)
+      .json({ error: "PhoneStore proxy failed", detail: error?.message });
   }
 });
 

@@ -37,6 +37,43 @@ body {
   margin: 0 auto;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.phonestore-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: white;
+  font-size: 0.85rem;
+}
+
+.phonestore-config label {
+  font-weight: 600;
+}
+
+.phonestore-config input {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  outline: none;
+  min-width: 200px;
+}
+
+.phonestore-config input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.phonestore-hint {
+  opacity: 0.8;
+  font-size: 0.75rem;
+}
+
 .app-header h1 {
   font-size: 2.5rem;
   margin-bottom: 10px;
@@ -385,6 +422,10 @@ p {
   .header-content {
     flex-direction: column;
     text-align: center;
+  }
+
+  .header-actions {
+    flex-direction: column;
   }
 
   .section {
