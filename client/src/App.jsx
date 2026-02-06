@@ -1,5 +1,51 @@
 import { useState, useEffect, useCallback } from "react";
-import "./App.css";
+import {
+  API_URL,
+  ECOM_BASE_URL,
+  RAILWAY_USER_ID,
+  RAILWAY_CART_ID,
+  RAILWAY_AUTH_TOKEN,
+  ECOM_AUTH_TOKEN,
+  PHONESTORE_USERNAME,
+} from "./config/env";
+import { buildCartItem, pickPhoneTable } from "./utils/tableHelpers";
+
+const getRowImage = (row) => {
+  const candidates = [
+    "imageUrl",
+    "image_url",
+    "image",
+    "thumbnail",
+    "thumb",
+    "img",
+    "pictureUri",
+    "picture_uri",
+  ];
+  for (const key of candidates) {
+    if (row && row[key]) return row[key];
+    const matchKey = Object.keys(row || {}).find(
+      (col) => col.toLowerCase() === key.toLowerCase(),
+    );
+    if (matchKey && row[matchKey]) return row[matchKey];
+  }
+  return "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=600&auto=format&fit=crop";
+};
+
+const formatPrice = (price) => {
+  if (price === null || price === undefined) return "Liên hệ";
+  const numeric = Number(price);
+  if (!Number.isFinite(numeric)) return "Liên hệ";
+  return `${numeric.toLocaleString("vi-VN")}₫`;
+};
+
+const pickProductTable = (list) => {
+  if (!list || list.length === 0) return null;
+  const candidates = ["product", "catalog", "item", "goods"];
+  const matched = list.find((name) =>
+    candidates.some((key) => name.toLowerCase().includes(key)),
+  );
+  return matched || list[0];
+};
 
 function App() {
   const [databases, setDatabases] = useState([]);
@@ -7,23 +53,15 @@ function App() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
   const [tableData, setTableData] = useState(null);
-  const [columns, setColumns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [cartSyncError, setCartSyncError] = useState(null);
-  const [phoneStoreUsername, setPhoneStoreUsername] = useState(
-    import.meta.env.VITE_PHONESTORE_USERNAME || "",
-  );
-
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-  const RAILWAY_BASE_URL = "https://test-9she.onrender.com";
-  const ECOM_BASE_URL = "https://ecommerce-integration.onrender.com";
-  const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "1";
-  const RAILWAY_CART_ID = import.meta.env.VITE_RAILWAY_CART_ID || "1";
-  const RAILWAY_AUTH_TOKEN = import.meta.env.VITE_RAILWAY_AUTH_TOKEN || "";
-  const ECOM_AUTH_TOKEN = import.meta.env.VITE_ECOM_AUTH_TOKEN || "";
+  const [searchTerm, setSearchTerm] = useState("");
+  const [allProducts, setAllProducts] = useState([]);
+  const [showAll, setShowAll] = useState(true);
+  const [loadingAll, setLoadingAll] = useState(false);
 
   const fetchDatabases = useCallback(async () => {
     try {
@@ -37,74 +75,66 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [API_URL]);
+  }, []);
 
-  const fetchTables = useCallback(
-    async (dbName) => {
-      try {
-        setLoading(true);
-        const response = await fetch(`${API_URL}/${dbName}/tables`);
-        const data = await response.json();
-        setTables(data.tables || []);
-        setError(null);
-      } catch (err) {
-        setError("Failed to fetch tables: " + err.message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [API_URL],
-  );
+  const fetchTables = useCallback(async (dbName) => {
+    try {
+      const response = await fetch(`${API_URL}/${dbName}/tables`);
+      const data = await response.json();
+      const tableList = data.tables || [];
+      setTables(tableList);
+      setError(null);
+      return tableList;
+    } catch (err) {
+      setError("Failed to fetch tables: " + err.message);
+      return [];
+    }
+  }, []);
 
   // Fetch databases on mount
   useEffect(() => {
     fetchDatabases();
   }, [fetchDatabases]);
 
-  // Fetch tables when database is selected
-  useEffect(() => {
-    if (selectedDb) {
-      fetchTables(selectedDb);
-      setSelectedTable(null);
-      setTableData(null);
-      setColumns([]);
-    }
-  }, [selectedDb, fetchTables]);
+  const loadDbProducts = useCallback(
+    async (dbName) => {
+      try {
+        setLoading(true);
+        setError(null);
+        setSelectedDb(dbName);
+        setShowAll(false);
+        setSelectedTable(null);
+        setTableData(null);
 
-  const pickPhoneTable = (list) => {
-    if (!list || list.length === 0) return null;
-    const preferred = list.find((name) => name.toLowerCase().includes("phone"));
-    if (preferred) return preferred;
+        const tableList = await fetchTables(dbName);
+        const tableName =
+          dbName === "phonewebsite"
+            ? pickPhoneTable(tableList)
+            : pickProductTable(tableList);
 
-    const productTable = list.find((name) =>
-      name.toLowerCase().includes("product"),
-    );
-    return productTable || list[0];
-  };
+        setSelectedTable(tableName);
+
+        if (tableName) {
+          await fetchTableData(dbName, tableName);
+        } else {
+          setError("Không tìm thấy bảng sản phẩm phù hợp.");
+        }
+
+        requestAnimationFrame(() => {
+          const element = document.getElementById("products-section");
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchTables],
+  );
 
   const showPhoneTable = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_URL}/phonewebsite/tables`);
-      const data = await response.json();
-      const phoneTables = data.tables || [];
-      const tableName = pickPhoneTable(phoneTables);
-
-      setSelectedDb("phonewebsite");
-      setTables(phoneTables);
-      setSelectedTable(tableName);
-      setTableData(null);
-      setColumns([]);
-
-      if (tableName) {
-        await fetchTableData("phonewebsite", tableName);
-      }
-      setError(null);
-    } catch (err) {
-      setError("Failed to fetch phone table: " + err.message);
-    } finally {
-      setLoading(false);
-    }
+    await loadDbProducts("phonewebsite");
   };
 
   const fetchTableData = async (dbName, tableName) => {
@@ -113,7 +143,6 @@ function App() {
       const response = await fetch(`${API_URL}/${dbName}/${tableName}`);
       const data = await response.json();
       setTableData(data.data || []);
-      setColumns(data.columns || []);
       setError(null);
     } catch (err) {
       setError("Failed to fetch table data: " + err.message);
@@ -122,143 +151,146 @@ function App() {
     }
   };
 
-  const handleTableSelect = (tableName) => {
-    setSelectedTable(tableName);
-    if (selectedDb) {
-      fetchTableData(selectedDb, tableName);
+  const fetchProductsForDb = useCallback(async (dbName) => {
+    try {
+      const tablesResponse = await fetch(`${API_URL}/${dbName}/tables`);
+      const tablesData = await tablesResponse.json();
+      const tableList = tablesData.tables || [];
+      const tableName =
+        dbName === "phonewebsite"
+          ? pickPhoneTable(tableList)
+          : pickProductTable(tableList);
+
+      if (!tableName) return [];
+
+      const dataResponse = await fetch(`${API_URL}/${dbName}/${tableName}`);
+      const data = await dataResponse.json();
+      return (data.data || []).map((row, rowIndex) => {
+        const item = buildCartItem({
+          row,
+          rowIndex,
+          selectedDb: dbName,
+          selectedTable: tableName,
+        });
+        const image =
+          item.phoneStoreProduct?.imageUrl || getRowImage(item.raw || row);
+        return {
+          ...item,
+          image,
+          sourceDb: dbName,
+          sourceTable: tableName,
+          rowIndex,
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch products for", dbName, err);
+      return [];
     }
+  }, []);
+
+  const loadAllProducts = useCallback(async () => {
+    try {
+      setLoadingAll(true);
+      const results = await Promise.all(
+        databases.map((dbName) => fetchProductsForDb(dbName)),
+      );
+      const merged = results.flat();
+      setAllProducts(merged);
+    } finally {
+      setLoadingAll(false);
+    }
+  }, [databases, fetchProductsForDb]);
+
+  useEffect(() => {
+    if (!databases.length || allProducts.length || loadingAll) {
+      return;
+    }
+    loadAllProducts();
+  }, [databases, allProducts.length, loadingAll, loadAllProducts]);
+
+  const normalizeCartItems = (items, sourceDb) => {
+    return (items || []).map((entry) => {
+      const product = entry.product || entry;
+      const name = product.name || product.title || entry.name || "Sản phẩm";
+      const price =
+        product.price ||
+        product.original ||
+        entry.price ||
+        product.unitPrice ||
+        0;
+      const image = getRowImage(product);
+      return {
+        key: `${sourceDb}-${entry.id || entry.productId || product.id}`,
+        id: entry.id || entry.productId || product.id,
+        name,
+        price,
+        quantity: entry.quantity || 1,
+        sourceDb,
+        sourceTable: "cart",
+        image,
+      };
+    });
   };
 
-  const getValueCaseInsensitive = (row, aliases) => {
-    const keyMap = Object.keys(row || {}).reduce((acc, key) => {
-      acc[key.toLowerCase()] = key;
-      return acc;
-    }, {});
+  const refreshRemoteCart = useCallback(async () => {
+    try {
+      const [ecomResponse, phoneResponse, railwayResponse] = await Promise.all([
+        fetch(`${ECOM_BASE_URL}/api/cart`, {
+          credentials: "include",
+          headers: ECOM_AUTH_TOKEN
+            ? { Authorization: `Bearer ${ECOM_AUTH_TOKEN}` }
+            : undefined,
+        }),
+        fetch(
+          `${API_URL}/proxy/phonestore/cart?username=${encodeURIComponent(
+            PHONESTORE_USERNAME,
+          )}`,
+          { credentials: "include" },
+        ),
+        fetch(
+          `${API_URL}/proxy/railway/cart?userId=${RAILWAY_USER_ID}&cartId=${RAILWAY_CART_ID}`,
+          {
+            credentials: "include",
+            headers: RAILWAY_AUTH_TOKEN
+              ? { Authorization: `Bearer ${RAILWAY_AUTH_TOKEN}` }
+              : undefined,
+          },
+        ),
+      ]);
 
-    for (const alias of aliases) {
-      const foundKey = keyMap[alias.toLowerCase()];
-      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
-        return row[foundKey];
-      }
+      const [ecomData, phoneData, railwayData] = await Promise.all([
+        ecomResponse.json().catch(() => []),
+        phoneResponse.json().catch(() => []),
+        railwayResponse.json().catch(() => []),
+      ]);
+
+      const merged = [
+        ...normalizeCartItems(Array.isArray(ecomData) ? ecomData : [], "ecom"),
+        ...normalizeCartItems(
+          Array.isArray(phoneData) ? phoneData : [],
+          "phonewebsite",
+        ),
+        ...normalizeCartItems(
+          Array.isArray(railwayData) ? railwayData : [],
+          "railway",
+        ),
+      ];
+
+      setCartItems(merged);
+    } catch (err) {
+      setCartSyncError(`Failed to load cart: ${err.message}`);
     }
+  }, []);
 
-    return null;
-  };
+  useEffect(() => {
+    refreshRemoteCart();
+  }, [refreshRemoteCart]);
 
-  const normalizePrice = (value) => {
-    if (value === null || value === undefined || value === "") {
-      return null;
+  const toggleCart = async () => {
+    if (!cartOpen) {
+      await refreshRemoteCart();
     }
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : null;
-  };
-
-  const findNumericId = (row) => {
-    const candidates =
-      selectedDb === "railway"
-        ? ["product_id", "productid", "id"]
-        : ["id", "product_id", "productid", "catalogitemid", "itemid"];
-    for (const key of candidates) {
-      const value = getValueCaseInsensitive(row, [key]);
-      if (value !== null && value !== undefined && value !== "") {
-        const numeric = Number(value);
-        if (Number.isFinite(numeric)) {
-          return numeric;
-        }
-      }
-    }
-    return null;
-  };
-
-  const buildCartItem = (row, rowIndex) => {
-    const numericId = findNumericId(row);
-    const name = getValueCaseInsensitive(row, [
-      "name",
-      "title",
-      "productname",
-      "itemname",
-    ]);
-    const basePrice = normalizePrice(
-      getValueCaseInsensitive(row, ["price", "unitprice", "cost", "amount"]),
-    );
-    const phoneStoreProduct =
-      selectedDb === "phonewebsite"
-        ? buildPhoneStoreProduct(row, rowIndex)
-        : null;
-    const phoneStorePrice =
-      phoneStoreProduct &&
-      Number.isFinite(phoneStoreProduct.original) &&
-      phoneStoreProduct.original !== null
-        ? Math.round(
-            (1 - (phoneStoreProduct.discount || 0) / 100) *
-              phoneStoreProduct.original,
-          )
-        : null;
-
-    const displayName = name ?? `Item ${rowIndex + 1}`;
-    const safeId = numericId ?? `${selectedDb}-${selectedTable}-${rowIndex}`;
-
-    return {
-      key: `${selectedDb}-${selectedTable}-${safeId}`,
-      id: safeId,
-      name: displayName,
-      price: phoneStorePrice ?? basePrice,
-      quantity: 1,
-      sourceDb: selectedDb,
-      sourceTable: selectedTable,
-      phoneStoreProduct,
-      raw: row,
-    };
-  };
-
-  const buildPhoneStoreProduct = (row, rowIndex) => {
-    const id = findNumericId(row);
-    if (!Number.isFinite(Number(id))) {
-      return null;
-    }
-
-    const name = getValueCaseInsensitive(row, [
-      "name",
-      "productname",
-      "product_name",
-      "title",
-      "itemname",
-    ]);
-    const discount = normalizePrice(
-      getValueCaseInsensitive(row, [
-        "discount",
-        "sale",
-        "discountpercent",
-        "percentdiscount",
-        "percent_off",
-      ]),
-    );
-    const original = normalizePrice(
-      getValueCaseInsensitive(row, [
-        "original",
-        "originalprice",
-        "original_price",
-        "baseprice",
-        "listprice",
-        "price",
-      ]),
-    );
-    const imageUrl = getValueCaseInsensitive(row, [
-      "imageurl",
-      "image_url",
-      "image",
-      "thumbnail",
-      "thumb",
-      "img",
-    ]);
-
-    return {
-      id: Number(id),
-      name: name ?? `Item ${rowIndex + 1}`,
-      discount: discount ?? 0,
-      original: original ?? 0,
-      imageUrl: imageUrl ?? "",
-    };
+    setCartOpen((open) => !open);
   };
 
   const fetchEcomCartMap = async () => {
@@ -318,7 +350,7 @@ function App() {
   };
 
   const syncPhoneStoreQuantity = async (item, nextQuantity) => {
-    const username = phoneStoreUsername.trim();
+    const username = PHONESTORE_USERNAME.trim();
     if (!username) {
       setCartSyncError(
         "PhoneStore username is required to sync the cart items.",
@@ -422,6 +454,9 @@ function App() {
 
     if (item.sourceDb === "railway") {
       const headers = {};
+      if (RAILWAY_AUTH_TOKEN) {
+        headers.Authorization = `Bearer ${RAILWAY_AUTH_TOKEN}`;
+      }
       if (action === "add") {
         return {
           url: `${API_URL}/proxy/railway/add-product?userId=${RAILWAY_USER_ID}&productId=${item.id}&cartId=${RAILWAY_CART_ID}`,
@@ -500,8 +535,13 @@ function App() {
     }
   };
 
-  const addToCart = async (row, rowIndex) => {
-    const item = buildCartItem(row, rowIndex);
+  const addProductToCart = async (product) => {
+    const item = buildCartItem({
+      row: product.raw,
+      rowIndex: product.rowIndex ?? 0,
+      selectedDb: product.sourceDb,
+      selectedTable: product.sourceTable,
+    });
     if (!Number.isFinite(Number(item.id))) {
       setCartSyncError(
         "ProductId must be numeric for cart APIs. Please map the correct id column.",
@@ -563,222 +603,297 @@ function App() {
   const visibleDatabases = databases.filter(
     (db) => db === "railway" || db === "microservice",
   );
-  const visibleTables = tables.slice(0, 2);
+  const products = (tableData || []).map((row, rowIndex) => {
+    const item = buildCartItem({
+      row,
+      rowIndex,
+      selectedDb,
+      selectedTable,
+    });
+    const image =
+      item.phoneStoreProduct?.imageUrl || getRowImage(item.raw || row);
+    return {
+      ...item,
+      image,
+      sourceDb: selectedDb,
+      sourceTable: selectedTable,
+      rowIndex,
+    };
+  });
+  const displayProducts = showAll ? allProducts : products;
+  const filteredProducts = displayProducts.filter((product) =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="header-content">
-          <div>
-            <h1>Multi Database Viewer</h1>
-            <p>View data from multiple MySQL databases</p>
-          </div>
-          <div className="header-actions">
-            <div className="phonestore-config">
-              <label htmlFor="phonestore-username">PhoneStore user</label>
-              <input
-                id="phonestore-username"
-                type="text"
-                placeholder="username"
-                value={phoneStoreUsername}
-                onChange={(event) => setPhoneStoreUsername(event.target.value)}
-              />
-              <span className="phonestore-hint">
-                Required for PhoneStore cart sync.
-              </span>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🛍️</span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">
+                DataMall Store
+              </h1>
+              <p className="text-sm text-slate-300">
+                Hệ thống dữ liệu sản phẩm hợp nhất
+              </p>
             </div>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
+            <input
+              className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/60 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400/70 sm:w-72"
+              type="text"
+              placeholder="Tìm sản phẩm..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
             <button
-              className="cart-button"
-              onClick={() => setCartOpen((open) => !open)}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
+              onClick={toggleCart}
             >
-              🛒 Cart <span className="cart-count">{cartCount}</span>
+              🛒 Giỏ hàng
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                {cartCount}
+              </span>
             </button>
+          </div>
+        </div>
+        <div className="mx-auto grid w-full max-w-6xl gap-6 px-6 pb-10">
+          <div>
+            <h2 className="text-3xl font-semibold leading-tight">
+              Trung tâm quản lý cửa hàng thương mại điện tử
+            </h2>
+            <p className="mt-3 text-sm text-slate-200">
+              Chọn nguồn dữ liệu, xem bảng sản phẩm và thêm hàng vào giỏ chỉ với
+              một cú nhấp.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-6 text-sm text-slate-200">
+              <div>
+                <div className="text-2xl font-bold text-white">
+                  {databases.length}
+                </div>
+                <div>Databases</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">
+                  {tables.length}
+                </div>
+                <div>Tables</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{cartCount}</div>
+                <div>Giỏ hàng</div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="app-main">
-        {error && <div className="error-message">⚠️ {error}</div>}
+      <main className="mx-auto -mt-8 w-full max-w-6xl space-y-6 px-6 pb-16">
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            ⚠️ {error}
+          </div>
+        )}
         {cartSyncError && (
-          <div className="error-message">⚠️ {cartSyncError}</div>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            ⚠️ {cartSyncError}
+          </div>
         )}
 
-        <div className="container">
-          {/* Database Selection */}
-          <section className="section">
-            <h2>Select Database</h2>
-            {loading && !databases.length && <p>Loading databases...</p>}
-            <div className="button-group">
-              {visibleDatabases.map((db) => (
-                <button
-                  key={db}
-                  className={`db-button ${selectedDb === db ? "active" : ""}`}
-                  onClick={() => setSelectedDb(db)}
-                >
-                  📦 {db}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {selectedDb && (
-            <>
-              {/* Table Selection */}
-              <section className="section">
-                <h2>Tables in {selectedDb}</h2>
-                {loading && !visibleTables.length && <p>Loading tables...</p>}
-                {visibleTables.length === 0 && !loading && (
-                  <p>No tables found</p>
-                )}
-                <div className="table-list">
-                  {visibleTables.map((table) => (
-                    <button
-                      key={table}
-                      className={`table-button ${selectedTable === table ? "active" : ""}`}
-                      onClick={() => handleTableSelect(table)}
-                    >
-                      📋 {table}
-                    </button>
-                  ))}
-                  <button className="table-button" onClick={showPhoneTable}>
-                    📱 phone table
-                  </button>
-                </div>
-              </section>
-
-              {/* Table Data Display */}
-              {selectedTable && (
-                <section className="section">
-                  <h2>
-                    Data from {selectedDb}.{selectedTable}
-                  </h2>
-                  {loading && <p>Loading data...</p>}
-
-                  {tableData && tableData.length > 0 && (
-                    <div className="data-info">
-                      <p>
-                        <strong>Total rows:</strong> {tableData.length}
-                      </p>
-                    </div>
-                  )}
-
-                  {tableData && tableData.length > 0 ? (
-                    <div className="table-wrapper">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            {columns.map((col) => (
-                              <th key={col.COLUMN_NAME}>
-                                <div>
-                                  <div className="col-name">
-                                    {col.COLUMN_NAME}
-                                  </div>
-                                  <div className="col-type">
-                                    {col.COLUMN_TYPE}
-                                  </div>
-                                  {col.COLUMN_KEY === "PRI" && (
-                                    <span className="primary-key">PK</span>
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                            <th>
-                              <div>
-                                <div className="col-name">Actions</div>
-                                <div className="col-type">Cart</div>
-                              </div>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tableData.map((row, rowIndex) => (
-                            <tr key={rowIndex}>
-                              {columns.map((col) => (
-                                <td key={col.COLUMN_NAME}>
-                                  {row[col.COLUMN_NAME] !== null &&
-                                  row[col.COLUMN_NAME] !== undefined ? (
-                                    String(row[col.COLUMN_NAME]).substring(
-                                      0,
-                                      100,
-                                    )
-                                  ) : (
-                                    <em className="null-value">NULL</em>
-                                  )}
-                                </td>
-                              ))}
-                              <td>
-                                <button
-                                  className="add-cart-button"
-                                  onClick={() => addToCart(row, rowIndex)}
-                                >
-                                  Add to cart
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    tableData && !loading && <p>No data found in this table</p>
-                  )}
-                </section>
-              )}
-            </>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70">
+          <div className="mb-4 space-y-1">
+            <h2 className="text-lg font-semibold">Chọn nguồn dữ liệu</h2>
+            <p className="text-sm text-slate-500">
+              Chuyển nhanh giữa các database
+            </p>
+          </div>
+          {loading && !databases.length && (
+            <p className="text-sm text-slate-500">Đang tải database...</p>
           )}
-        </div>
+          <div className="flex flex-wrap gap-3">
+            {visibleDatabases.map((db) => (
+              <button
+                key={db}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  selectedDb === db
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+                }`}
+                onClick={() => loadDbProducts(db)}
+              >
+                📦 {db}
+              </button>
+            ))}
+            <button
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                selectedDb === "phonewebsite"
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+              }`}
+              onClick={showPhoneTable}
+            >
+              📱 phone
+            </button>
+          </div>
+        </section>
+
+        {(showAll || selectedDb) && (
+          <section
+            id="products-section"
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70"
+          >
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {showAll
+                    ? "Tất cả sản phẩm"
+                    : `Sản phẩm từ ${selectedDb}${
+                        selectedTable ? `.${selectedTable}` : ""
+                      }`}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {filteredProducts.length} sản phẩm khả dụng
+                </p>
+              </div>
+              {(loadingAll || loading) && (
+                <span className="text-sm text-slate-500">Đang tải...</span>
+              )}
+            </div>
+            {filteredProducts.length > 0 ? (
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {filteredProducts.map((product, index) => (
+                  <div
+                    key={product.key ?? index}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl"
+                  >
+                    <img
+                      className="h-44 w-full object-cover"
+                      src={product.image}
+                      alt={product.name}
+                    />
+                    <div className="space-y-3 p-4">
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>{product.sourceDb}</span>
+                        <span>•</span>
+                        <span>{product.sourceTable}</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {product.name}
+                      </h3>
+                      <div className="text-lg font-bold text-amber-600">
+                        {formatPrice(product.price)}
+                      </div>
+                      <button
+                        className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                        onClick={() => addProductToCart(product)}
+                      >
+                        Thêm vào giỏ
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              !loadingAll && (
+                <p className="text-sm text-slate-500">
+                  Không có sản phẩm để hiển thị.
+                </p>
+              )
+            )}
+          </section>
+        )}
       </main>
 
       {cartOpen && (
-        <div className="cart-drawer">
-          <div className="cart-header">
-            <h2>Shopping Cart</h2>
-            <button className="cart-close" onClick={() => setCartOpen(false)}>
-              ✕
-            </button>
-          </div>
-
-          {cartItems.length === 0 ? (
-            <p className="cart-empty">Your cart is empty.</p>
-          ) : (
-            <div className="cart-items">
-              {cartItems.map((item) => (
-                <div key={item.key} className="cart-item">
-                  <div className="cart-item-info">
-                    <div className="cart-item-name">{item.name}</div>
-                    <div className="cart-item-meta">
-                      <span>{item.sourceDb}</span>
-                      <span>•</span>
-                      <span>{item.sourceTable}</span>
-                    </div>
-                    <div className="cart-item-price">
-                      {item.price !== null ? `$${item.price}` : "Price N/A"}
-                    </div>
-                  </div>
-                  <div className="cart-qty">
-                    <button
-                      className="qty-button"
-                      onClick={() => updateCartQuantity(item.key, -1)}
-                    >
-                      −
-                    </button>
-                    <span>{item.quantity}</span>
-                    <button
-                      className="qty-button"
-                      onClick={() => updateCartQuantity(item.key, 1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          onClick={() => setCartOpen(false)}
+        >
+          <div
+            className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col gap-6 bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Giỏ hàng của bạn</h2>
+                <p className="text-xs text-slate-500">
+                  {cartItems.length} sản phẩm
+                </p>
+              </div>
+              <button
+                className="h-9 w-9 rounded-full bg-slate-100 text-lg"
+                onClick={() => setCartOpen(false)}
+              >
+                ✕
+              </button>
             </div>
-          )}
 
-          <div className="cart-footer">
-            <div className="cart-total">
-              <span>Total</span>
-              <strong>${cartTotal.toFixed(2)}</strong>
+            {cartItems.length === 0 ? (
+              <p className="text-sm text-slate-500">Giỏ hàng đang trống.</p>
+            ) : (
+              <div className="flex-1 space-y-4 overflow-y-auto">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      <img
+                        className="h-14 w-14 rounded-lg object-cover"
+                        src={item.image}
+                        alt={item.name}
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {item.name}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                          <span>{item.sourceDb}</span>
+                          <span>•</span>
+                          <span>{item.sourceTable}</span>
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-amber-600">
+                          {formatPrice(item.price)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="h-8 w-8 rounded-full bg-slate-900 text-sm font-semibold text-white"
+                          onClick={() => updateCartQuantity(item.key, -1)}
+                        >
+                          −
+                        </button>
+                        <span className="text-sm font-semibold">
+                          {item.quantity}
+                        </span>
+                        <button
+                          className="h-8 w-8 rounded-full bg-slate-900 text-sm font-semibold text-white"
+                          onClick={() => updateCartQuantity(item.key, 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {formatPrice((item.price ?? 0) * item.quantity)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-slate-200 pt-4">
+              <div className="mb-3 flex items-center justify-between text-base font-semibold text-slate-900">
+                <span>Tổng cộng</span>
+                <span>{formatPrice(cartTotal)}</span>
+              </div>
+              <button className="w-full rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600">
+                Thanh toán
+              </button>
             </div>
           </div>
         </div>
