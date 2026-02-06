@@ -9,43 +9,17 @@ import {
   PHONESTORE_USERNAME,
 } from "./config/env";
 import { buildCartItem, pickPhoneTable } from "./utils/tableHelpers";
-
-const getRowImage = (row) => {
-  const candidates = [
-    "imageUrl",
-    "image_url",
-    "image",
-    "thumbnail",
-    "thumb",
-    "img",
-    "pictureUri",
-    "picture_uri",
-  ];
-  for (const key of candidates) {
-    if (row && row[key]) return row[key];
-    const matchKey = Object.keys(row || {}).find(
-      (col) => col.toLowerCase() === key.toLowerCase(),
-    );
-    if (matchKey && row[matchKey]) return row[matchKey];
-  }
-  return "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=600&auto=format&fit=crop";
-};
-
-const formatPrice = (price) => {
-  if (price === null || price === undefined) return "Liên hệ";
-  const numeric = Number(price);
-  if (!Number.isFinite(numeric)) return "Liên hệ";
-  return `${numeric.toLocaleString("vi-VN")}₫`;
-};
-
-const pickProductTable = (list) => {
-  if (!list || list.length === 0) return null;
-  const candidates = ["product", "catalog", "item", "goods"];
-  const matched = list.find((name) =>
-    candidates.some((key) => name.toLowerCase().includes(key)),
-  );
-  return matched || list[0];
-};
+import {
+  formatPrice,
+  getRowImage,
+  pickProductTable,
+} from "./utils/productHelpers";
+import AppHeader from "./components/layout/AppHeader";
+import DatabaseSelector from "./components/sections/DatabaseSelector";
+import ProductsSection from "./components/sections/ProductsSection";
+import CartDrawer from "./components/cart/CartDrawer";
+import CheckoutModal from "./components/modals/CheckoutModal";
+import OrdersModal from "./components/modals/OrdersModal";
 
 function App() {
   const [databases, setDatabases] = useState([]);
@@ -798,74 +772,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 text-white">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">🛍️</span>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                DataMall Store
-              </h1>
-              <p className="text-sm text-slate-300">
-                Hệ thống dữ liệu sản phẩm hợp nhất
-              </p>
-            </div>
-          </div>
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
-            <input
-              className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/60 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400/70 sm:w-72"
-              type="text"
-              placeholder="Tìm sản phẩm..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
-              onClick={openOrdersModal}
-            >
-              🧾 Đơn hàng
-            </button>
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
-              onClick={toggleCart}
-            >
-              🛒 Giỏ hàng
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
-                {cartCount}
-              </span>
-            </button>
-          </div>
-        </div>
-        <div className="mx-auto grid w-full max-w-6xl gap-6 px-6 pb-10">
-          <div>
-            <h2 className="text-3xl font-semibold leading-tight">
-              Trung tâm quản lý cửa hàng thương mại điện tử
-            </h2>
-            <p className="mt-3 text-sm text-slate-200">
-              Chọn nguồn dữ liệu, xem bảng sản phẩm và thêm hàng vào giỏ chỉ với
-              một cú nhấp.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-6 text-sm text-slate-200">
-              <div>
-                <div className="text-2xl font-bold text-white">
-                  {databases.length}
-                </div>
-                <div>Databases</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-white">
-                  {tables.length}
-                </div>
-                <div>Tables</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-white">{cartCount}</div>
-                <div>Giỏ hàng</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        onOpenOrders={openOrdersModal}
+        onToggleCart={toggleCart}
+        cartCount={cartCount}
+        databasesCount={databases.length}
+        tablesCount={tables.length}
+      />
 
       <main className="mx-auto -mt-8 w-full max-w-6xl space-y-6 px-6 pb-16">
         {error && (
@@ -884,369 +799,54 @@ function App() {
           </div>
         )}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70">
-          <div className="mb-4 space-y-1">
-            <h2 className="text-lg font-semibold">Chọn nguồn dữ liệu</h2>
-            <p className="text-sm text-slate-500">
-              Chuyển nhanh giữa các database
-            </p>
-          </div>
-          {loading && !databases.length && (
-            <p className="text-sm text-slate-500">Đang tải database...</p>
-          )}
-          <div className="flex flex-wrap gap-3">
-            {visibleDatabases.map((db) => (
-              <button
-                key={db}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                  selectedDb === db
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
-                }`}
-                onClick={() => loadDbProducts(db)}
-              >
-                📦 {db}
-              </button>
-            ))}
-            <button
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                selectedDb === "phonewebsite"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
-              }`}
-              onClick={showPhoneTable}
-            >
-              📱 phone
-            </button>
-          </div>
-        </section>
+        <DatabaseSelector
+          loading={loading}
+          visibleDatabases={visibleDatabases}
+          selectedDb={selectedDb}
+          onSelectDb={loadDbProducts}
+          onSelectPhone={showPhoneTable}
+        />
 
-        {(showAll || selectedDb) && (
-          <section
-            id="products-section"
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70"
-          >
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {showAll
-                    ? "Tất cả sản phẩm"
-                    : `Sản phẩm từ ${selectedDb}${
-                        selectedTable ? `.${selectedTable}` : ""
-                      }`}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {filteredProducts.length} sản phẩm khả dụng
-                </p>
-              </div>
-              {(loadingAll || loading) && (
-                <span className="text-sm text-slate-500">Đang tải...</span>
-              )}
-            </div>
-            {filteredProducts.length > 0 ? (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredProducts.map((product, index) => (
-                  <div
-                    key={product.key ?? index}
-                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl"
-                  >
-                    <img
-                      className="h-44 w-full object-cover"
-                      src={product.image}
-                      alt={product.name}
-                    />
-                    <div className="space-y-3 p-4">
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span>{product.sourceDb}</span>
-                        <span>•</span>
-                        <span>{product.sourceTable}</span>
-                      </div>
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {product.name}
-                      </h3>
-                      <div className="text-lg font-bold text-amber-600">
-                        {formatPrice(product.price)}
-                      </div>
-                      <button
-                        className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                        onClick={() => addProductToCart(product)}
-                      >
-                        Thêm vào giỏ
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              !loadingAll && (
-                <p className="text-sm text-slate-500">
-                  Không có sản phẩm để hiển thị.
-                </p>
-              )
-            )}
-          </section>
-        )}
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Đơn hàng tổng hợp</h2>
-              <p className="text-sm text-slate-500">
-                {orders.length} đơn hàng từ các nguồn
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {ordersLoading && (
-                <span className="text-sm text-slate-500">Đang tải...</span>
-              )}
-              <button
-                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
-                onClick={fetchOrdersOnceAndUpdate}
-              >
-                Xem hóa đơn
-              </button>
-            </div>
-          </div>
-          {orders.length === 0 ? (
-            <p className="text-sm text-slate-500">Chưa có đơn hàng.</p>
-          ) : (
-            <div className="space-y-3">
-              {orders.map((order) => (
-                <div
-                  key={`${order.sourceDb}-${order.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">
-                      #{order.id} • {order.sourceDb}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {order.status} • {order.itemsCount} items
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold text-amber-600">
-                    {formatPrice(order.total)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+        <ProductsSection
+          show={showAll || Boolean(selectedDb)}
+          showAll={showAll}
+          selectedDb={selectedDb}
+          selectedTable={selectedTable}
+          filteredProducts={filteredProducts}
+          loading={loading}
+          loadingAll={loadingAll}
+          onAddToCart={addProductToCart}
+          formatPrice={formatPrice}
+        />
       </main>
+      <CartDrawer
+        open={cartOpen}
+        cartItems={cartItems}
+        cartTotal={cartTotal}
+        onClose={() => setCartOpen(false)}
+        onUpdateQuantity={updateCartQuantity}
+        onCheckout={handleCheckout}
+        formatPrice={formatPrice}
+      />
 
-      {cartOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-          onClick={() => setCartOpen(false)}
-        >
-          <div
-            className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col gap-6 bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Giỏ hàng của bạn</h2>
-                <p className="text-xs text-slate-500">
-                  {cartItems.length} sản phẩm
-                </p>
-              </div>
-              <button
-                className="h-9 w-9 rounded-full bg-slate-100 text-lg"
-                onClick={() => setCartOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
+      <CheckoutModal
+        open={checkoutOpen}
+        ordersLoading={ordersLoading}
+        ordersCount={orders.length}
+        onClose={() => setCheckoutOpen(false)}
+        onRefresh={fetchOrdersOnceAndUpdate}
+        onStopPolling={stopOrdersPolling}
+        onStartPolling={startOrdersPolling}
+      />
 
-            {cartItems.length === 0 ? (
-              <p className="text-sm text-slate-500">Giỏ hàng đang trống.</p>
-            ) : (
-              <div className="flex-1 space-y-4 overflow-y-auto">
-                {cartItems.map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3"
-                  >
-                    <div className="flex items-start gap-3">
-                      <img
-                        className="h-14 w-14 rounded-lg object-cover"
-                        src={item.image}
-                        alt={item.name}
-                      />
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">
-                          {item.name}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                          <span>{item.sourceDb}</span>
-                          <span>•</span>
-                          <span>{item.sourceTable}</span>
-                        </div>
-                        <div className="mt-2 text-sm font-semibold text-amber-600">
-                          {formatPrice(item.price)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="h-8 w-8 rounded-full bg-slate-900 text-sm font-semibold text-white"
-                          onClick={() => updateCartQuantity(item.key, -1)}
-                        >
-                          −
-                        </button>
-                        <span className="text-sm font-semibold">
-                          {item.quantity}
-                        </span>
-                        <button
-                          className="h-8 w-8 rounded-full bg-slate-900 text-sm font-semibold text-white"
-                          onClick={() => updateCartQuantity(item.key, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {formatPrice((item.price ?? 0) * item.quantity)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-slate-200 pt-4">
-              <div className="mb-3 flex items-center justify-between text-base font-semibold text-slate-900">
-                <span>Tổng cộng</span>
-                <span>{formatPrice(cartTotal)}</span>
-              </div>
-              <button
-                className="w-full rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
-                onClick={handleCheckout}
-              >
-                Thanh toán
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {checkoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Đang xử lý thanh toán
-              </h3>
-              <button
-                className="h-8 w-8 rounded-full bg-slate-100 text-lg"
-                onClick={() => setCheckoutOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-slate-600">
-              Đang chờ các web con hoàn tất thanh toán và tạo đơn hàng...
-            </p>
-            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-              {ordersLoading ? "Đang tổng hợp đơn hàng" : "Hoàn tất"}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
-                onClick={fetchOrdersOnceAndUpdate}
-              >
-                Xem hóa đơn
-              </button>
-              {ordersLoading ? (
-                <button
-                  className="rounded-full border border-rose-200 px-4 py-1.5 text-sm font-semibold text-rose-600 transition hover:border-rose-300"
-                  onClick={stopOrdersPolling}
-                >
-                  Dừng chờ
-                </button>
-              ) : (
-                <button
-                  className="rounded-full border border-amber-200 px-4 py-1.5 text-sm font-semibold text-amber-600 transition hover:border-amber-300"
-                  onClick={startOrdersPolling}
-                >
-                  Chờ thêm
-                </button>
-              )}
-            </div>
-            {!ordersLoading && orders.length > 0 && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                Đã tổng hợp {orders.length} đơn hàng. Bạn có thể xem ở mục "Đơn
-                hàng tổng hợp".
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {ordersModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOrdersModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Đơn hàng tổng hợp
-              </h3>
-              <button
-                className="h-8 w-8 rounded-full bg-slate-100 text-lg"
-                onClick={() => setOrdersModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">
-                {orders.length} đơn hàng từ các nguồn
-              </p>
-              <button
-                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
-                onClick={fetchOrdersOnceAndUpdate}
-              >
-                Xem hóa đơn
-              </button>
-            </div>
-
-            {ordersLoading && (
-              <p className="mt-3 text-sm text-slate-500">Đang tải...</p>
-            )}
-
-            {orders.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">Chưa có đơn hàng.</p>
-            ) : (
-              <div className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-                {orders.map((order) => (
-                  <div
-                    key={`${order.sourceDb}-${order.id}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">
-                        #{order.id} • {order.sourceDb}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {order.status} • {order.itemsCount} items
-                      </div>
-                    </div>
-                    <div className="text-sm font-semibold text-amber-600">
-                      {formatPrice(order.total)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <OrdersModal
+        open={ordersModalOpen}
+        orders={orders}
+        ordersLoading={ordersLoading}
+        onClose={() => setOrdersModalOpen(false)}
+        onRefresh={fetchOrdersOnceAndUpdate}
+        formatPrice={formatPrice}
+      />
     </div>
   );
 }
