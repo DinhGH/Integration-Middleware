@@ -367,6 +367,96 @@ router.get("/proxy/phonestore/cart", async (req, res) => {
   }
 });
 
+router.get("/proxy/railway/orders", async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) {
+    return res.status(400).json({ error: "Missing userId" });
+  }
+
+  const url = new URL(`/ecom/orders/orders/${userId}`, RAILWAY_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+    console.log("Railway orders", {
+      url: url.toString(),
+      hasAuth: Boolean(headers.Authorization),
+    });
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    console.log("Railway orders response", {
+      status: result.status,
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("Railway orders proxy failed:", error?.message || error);
+    return res
+      .status(502)
+      .json({ error: "Railway orders proxy failed", detail: error?.message });
+  }
+});
+
+router.get("/proxy/ecom/orders", async (req, res) => {
+  const url = new URL("/api/orders/my-orders", ECOM_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, ECOM_AUTH_TOKEN);
+    const rawToken = headers.Authorization
+      ? headers.Authorization.replace(/^Bearer\s+/i, "")
+      : "";
+    if (rawToken) {
+      headers["x-access-token"] = rawToken;
+      headers.token = rawToken;
+    }
+    console.log("Ecom orders", {
+      url: url.toString(),
+      hasAuth: Boolean(headers.Authorization),
+    });
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    console.log("Ecom orders response", {
+      status: result.status,
+      data: result.data,
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("Ecommerce orders proxy failed:", error?.message || error);
+    return res
+      .status(502)
+      .json({ error: "Ecommerce orders proxy failed", detail: error?.message });
+  }
+});
+
+router.get("/proxy/phonestore/orders", async (req, res) => {
+  const username = req.query.username;
+  if (!username) {
+    return res.status(400).json({ error: "Missing username" });
+  }
+
+  const url = new URL("/api/orders", PHONESTORE_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, "");
+    headers.Cookie = buildPhoneStoreCookie(username);
+
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    console.log("PhoneStore orders response", {
+      status: result.status,
+      data: result.data,
+    });
+    return res.status(result.status).json(result.data);
+  } catch (error) {
+    console.error("PhoneStore orders proxy failed:", error?.message || error);
+    return res.status(502).json({
+      error: "PhoneStore orders proxy failed",
+      detail: error?.message,
+    });
+  }
+});
+
 router.post("/proxy/phonestore/cart", async (req, res) => {
   const url = new URL("/api/cart", PHONESTORE_BASE_URL);
   try {

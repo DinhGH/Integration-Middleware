@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   API_URL,
   ECOM_BASE_URL,
@@ -62,6 +62,16 @@ function App() {
   const [allProducts, setAllProducts] = useState([]);
   const [showAll, setShowAll] = useState(true);
   const [loadingAll, setLoadingAll] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [ordersModalOpen, setOrdersModalOpen] = useState(false);
+  const ordersPollingRef = useRef(false);
+
+  const ORDER_POLL_INTERVAL_MS = 2000;
+  const ORDER_POLL_TIMEOUT_MS = 120000;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const fetchDatabases = useCallback(async () => {
     try {
@@ -290,6 +300,158 @@ function App() {
       setCartSyncError(`Failed to load cart: ${err.message}`);
     }
   }, []);
+
+  const normalizeOrders = (list, sourceDb) => {
+    const ordersList = Array.isArray(list) ? list : [];
+    return ordersList.map((order) => {
+      const orderId =
+        order.orderId ?? order.id ?? order.order_id ?? order.paymentId;
+      const total =
+        order.totalAmount ?? order.total ?? order.paymentAmount ?? 0;
+      const status = order.status ?? order.paymentStatus ?? "UNKNOWN";
+      const createdAt =
+        order.orderDate ?? order.createdAt ?? order.paymentDate ?? null;
+      const items = order.items || order.orderItem || order.orderItems || [];
+
+      return {
+        sourceDb,
+        id: orderId,
+        total,
+        status,
+        createdAt,
+        itemsCount: Array.isArray(items) ? items.length : 0,
+        raw: order,
+      };
+    });
+  };
+
+  const fetchOrdersOnce = useCallback(async () => {
+    const requests = [
+      {
+        key: "ecom",
+        request: fetch(`${ECOM_BASE_URL}/api/orders/my-orders`, {
+          credentials: "include",
+        }),
+      },
+      {
+        key: "railway",
+        request: fetch(
+          `${API_URL}/proxy/railway/orders?userId=${RAILWAY_USER_ID}`,
+          {
+            credentials: "include",
+            headers: RAILWAY_AUTH_TOKEN
+              ? { Authorization: `Bearer ${RAILWAY_AUTH_TOKEN}` }
+              : undefined,
+          },
+        ),
+      },
+      {
+        key: "phonewebsite",
+        request: fetch(
+          `${API_URL}/proxy/phonestore/orders?username=${encodeURIComponent(
+            PHONESTORE_USERNAME,
+          )}`,
+          { credentials: "include" },
+        ),
+      },
+    ];
+
+    const results = await Promise.allSettled(
+      requests.map((entry) => entry.request),
+    );
+
+    let allOk = true;
+    const merged = [];
+
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
+      const key = requests[index].key;
+
+      if (result.status !== "fulfilled") {
+        allOk = false;
+        continue;
+      }
+
+      const response = result.value;
+      if (!response.ok) {
+        allOk = false;
+        continue;
+      }
+
+      const data = await response.json().catch(() => []);
+      merged.push(...normalizeOrders(data, key));
+    }
+
+    const mergedOrders = merged.sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return { mergedOrders, allOk };
+  }, []);
+
+  const fetchOrdersOnceAndUpdate = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError(null);
+    try {
+      const { mergedOrders } = await fetchOrdersOnce();
+      setOrders(mergedOrders);
+    } catch (err) {
+      setOrdersError(`Failed to load orders: ${err.message}`);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [fetchOrdersOnce]);
+
+  const stopOrdersPolling = () => {
+    ordersPollingRef.current = false;
+    setOrdersLoading(false);
+  };
+
+  const startOrdersPolling = useCallback(async () => {
+    ordersPollingRef.current = true;
+    setOrdersLoading(true);
+    setOrdersError(null);
+
+    const startedAt = Date.now();
+    let lastOrders = [];
+    let allOk = false;
+
+    while (
+      ordersPollingRef.current &&
+      Date.now() - startedAt < ORDER_POLL_TIMEOUT_MS
+    ) {
+      const { mergedOrders, allOk: pollOk } = await fetchOrdersOnce();
+      lastOrders = mergedOrders;
+      setOrders(mergedOrders);
+      if (pollOk) {
+        allOk = true;
+        break;
+      }
+      await sleep(ORDER_POLL_INTERVAL_MS);
+    }
+
+    if (ordersPollingRef.current && !allOk) {
+      setOrders(lastOrders);
+      setOrdersError(
+        "Chưa lấy được đơn hàng từ tất cả web con. Vui lòng thử lại sau.",
+      );
+    }
+
+    ordersPollingRef.current = false;
+    setOrdersLoading(false);
+  }, [fetchOrdersOnce]);
+
+  const handleCheckout = async () => {
+    setCheckoutOpen(true);
+    await startOrdersPolling();
+  };
+
+  const openOrdersModal = async () => {
+    setOrdersModalOpen(true);
+    await fetchOrdersOnceAndUpdate();
+  };
 
   useEffect(() => {
     refreshRemoteCart();
@@ -658,6 +820,12 @@ function App() {
               onChange={(event) => setSearchTerm(event.target.value)}
             />
             <button
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+              onClick={openOrdersModal}
+            >
+              🧾 Đơn hàng
+            </button>
+            <button
               className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
               onClick={toggleCart}
             >
@@ -708,6 +876,11 @@ function App() {
         {cartSyncError && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             ⚠️ {cartSyncError}
+          </div>
+        )}
+        {ordersError && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            ⚠️ {ordersError}
           </div>
         )}
 
@@ -813,6 +986,52 @@ function App() {
             )}
           </section>
         )}
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/70">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Đơn hàng tổng hợp</h2>
+              <p className="text-sm text-slate-500">
+                {orders.length} đơn hàng từ các nguồn
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {ordersLoading && (
+                <span className="text-sm text-slate-500">Đang tải...</span>
+              )}
+              <button
+                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                onClick={fetchOrdersOnceAndUpdate}
+              >
+                Xem hóa đơn
+              </button>
+            </div>
+          </div>
+          {orders.length === 0 ? (
+            <p className="text-sm text-slate-500">Chưa có đơn hàng.</p>
+          ) : (
+            <div className="space-y-3">
+              {orders.map((order) => (
+                <div
+                  key={`${order.sourceDb}-${order.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      #{order.id} • {order.sourceDb}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {order.status} • {order.itemsCount} items
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-amber-600">
+                    {formatPrice(order.total)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </main>
 
       {cartOpen && (
@@ -900,10 +1119,131 @@ function App() {
                 <span>Tổng cộng</span>
                 <span>{formatPrice(cartTotal)}</span>
               </div>
-              <button className="w-full rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600">
+              <button
+                className="w-full rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
+                onClick={handleCheckout}
+              >
                 Thanh toán
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {checkoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Đang xử lý thanh toán
+              </h3>
+              <button
+                className="h-8 w-8 rounded-full bg-slate-100 text-lg"
+                onClick={() => setCheckoutOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              Đang chờ các web con hoàn tất thanh toán và tạo đơn hàng...
+            </p>
+            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              {ordersLoading ? "Đang tổng hợp đơn hàng" : "Hoàn tất"}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                onClick={fetchOrdersOnceAndUpdate}
+              >
+                Xem hóa đơn
+              </button>
+              {ordersLoading ? (
+                <button
+                  className="rounded-full border border-rose-200 px-4 py-1.5 text-sm font-semibold text-rose-600 transition hover:border-rose-300"
+                  onClick={stopOrdersPolling}
+                >
+                  Dừng chờ
+                </button>
+              ) : (
+                <button
+                  className="rounded-full border border-amber-200 px-4 py-1.5 text-sm font-semibold text-amber-600 transition hover:border-amber-300"
+                  onClick={startOrdersPolling}
+                >
+                  Chờ thêm
+                </button>
+              )}
+            </div>
+            {!ordersLoading && orders.length > 0 && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Đã tổng hợp {orders.length} đơn hàng. Bạn có thể xem ở mục "Đơn
+                hàng tổng hợp".
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {ordersModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setOrdersModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Đơn hàng tổng hợp
+              </h3>
+              <button
+                className="h-8 w-8 rounded-full bg-slate-100 text-lg"
+                onClick={() => setOrdersModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                {orders.length} đơn hàng từ các nguồn
+              </p>
+              <button
+                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                onClick={fetchOrdersOnceAndUpdate}
+              >
+                Xem hóa đơn
+              </button>
+            </div>
+
+            {ordersLoading && (
+              <p className="mt-3 text-sm text-slate-500">Đang tải...</p>
+            )}
+
+            {orders.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-500">Chưa có đơn hàng.</p>
+            ) : (
+              <div className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+                {orders.map((order) => (
+                  <div
+                    key={`${order.sourceDb}-${order.id}`}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        #{order.id} • {order.sourceDb}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {order.status} • {order.itemsCount} items
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold text-amber-600">
+                      {formatPrice(order.total)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
