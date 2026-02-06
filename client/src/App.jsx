@@ -209,8 +209,20 @@ function App() {
   }, [databases, allProducts.length, loadingAll, loadAllProducts]);
 
   const normalizeCartItems = (items, sourceDb) => {
-    return (items || []).map((entry) => {
+    const list = Array.isArray(items)
+      ? items
+      : Array.isArray(items?.cartItems)
+        ? items.cartItems
+        : [];
+    return list.map((entry) => {
       const product = entry.product || entry;
+      const productId =
+        entry.productId ??
+        product?.productId ??
+        product?.id ??
+        entry.id ??
+        entry.cartItemId;
+      const keyId = entry.cartItemId ?? productId ?? entry.id;
       const name = product.name || product.title || entry.name || "Sản phẩm";
       const price =
         product.price ||
@@ -220,8 +232,8 @@ function App() {
         0;
       const image = getRowImage(product);
       return {
-        key: `${sourceDb}-${entry.id || entry.productId || product.id}`,
-        id: entry.id || entry.productId || product.id,
+        key: `${sourceDb}-${keyId ?? "unknown"}`,
+        id: productId,
         name,
         price,
         quantity: entry.quantity || 1,
@@ -270,10 +282,7 @@ function App() {
           Array.isArray(phoneData) ? phoneData : [],
           "phonewebsite",
         ),
-        ...normalizeCartItems(
-          Array.isArray(railwayData) ? railwayData : [],
-          "railway",
-        ),
+        ...normalizeCartItems(railwayData, "railway"),
       ];
 
       setCartItems(merged);

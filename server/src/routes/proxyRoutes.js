@@ -204,36 +204,37 @@ router.get("/proxy/railway/cart", async (req, res) => {
   const userId = req.query.userId;
   const cartId = req.query.cartId;
 
-  if (!userId && !cartId) {
-    return res.status(400).json({ error: "Missing userId or cartId" });
+  if (!cartId && !userId) {
+    return res.status(400).json({ error: "Missing cartId or userId" });
   }
 
   const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
 
-  const tryRequest = async (path) => {
+  const tryRequest = async (path, label) => {
     const url = new URL(path, RAILWAY_BASE_URL);
     console.log("Railway cart", {
       url: url.toString(),
       hasAuth: Boolean(headers.Authorization),
+      label,
     });
-    return forwardRequest(url.toString(), {
+    const result = await forwardRequest(url.toString(), {
       method: "GET",
       headers,
     });
+    console.log("Railway cart response", {
+      label,
+      status: result.status,
+      data: result.data,
+    });
+    return result;
   };
 
   try {
+    const resolvedCartId = cartId || userId;
     let result = await tryRequest(
-      "/ecom/cart" + (userId ? `?userId=${userId}` : ""),
+      `/ecom/cart/products/${resolvedCartId}`,
+      "products-cartId",
     );
-
-    if (result.status >= 400 && userId) {
-      result = await tryRequest(`/ecom/cart/${userId}`);
-    }
-
-    if (result.status >= 400 && cartId) {
-      result = await tryRequest(`/ecom/cart/${cartId}`);
-    }
 
     return res.status(result.status).json(result.data);
   } catch (error) {
