@@ -4,6 +4,7 @@ const { PORT } = require("./config/env");
 const { initializePools } = require("./db/pools");
 const dbRoutes = require("./routes/dbRoutes");
 const proxyRoutes = require("./routes/proxyRoutes");
+const analyticsRoutes = require("./routes/analyticsRoutes");
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(express.json());
 
 app.use("/api", dbRoutes);
 app.use("/api", proxyRoutes);
+app.use("/api", analyticsRoutes);
 
 initializePools()
   .then(() => {

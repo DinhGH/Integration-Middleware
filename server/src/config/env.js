@@ -15,6 +15,8 @@ const PHONESTORE_DATABASE_URL =
   process.env.PHONESTORE_DATABASE_URL || process.env.DATABASE_URL || "";
 const RAILWAY_AUTH_TOKEN = process.env.RAILWAY_AUTH_TOKEN || "";
 const ECOM_AUTH_TOKEN = process.env.ECOM_AUTH_TOKEN || "";
+const RAILWAY_USER_ID = process.env.RAILWAY_USER_ID || "";
+const PHONESTORE_USERNAME = process.env.PHONESTORE_USERNAME || "";
 
 module.exports = {
   PORT,
@@ -24,4 +26,6 @@ module.exports = {
   PHONESTORE_DATABASE_URL,
   RAILWAY_AUTH_TOKEN,
   ECOM_AUTH_TOKEN,
+  RAILWAY_USER_ID,
+  PHONESTORE_USERNAME,
 };

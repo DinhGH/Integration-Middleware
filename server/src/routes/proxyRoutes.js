@@ -510,4 +510,79 @@ router.delete("/proxy/phonestore/cart", async (req, res) => {
   }
 });
 
+// ============= Analytics Endpoints =============
+
+// Get ALL orders from Railway for analytics
+router.get("/analytics/railway/orders", async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) {
+    return res.status(400).json({ error: "Missing userId" });
+  }
+  const url = new URL(`/ecom/orders/orders/${userId}`, RAILWAY_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, RAILWAY_AUTH_TOKEN);
+    console.log("Analytics - Railway orders all", {
+      url: url.toString(),
+      hasAuth: Boolean(headers.Authorization),
+    });
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    return res.status(result.status).json(result.data || []);
+  } catch (error) {
+    console.error("Analytics - Railway orders proxy failed:", error?.message || error);
+    return res.status(502).json({ error: "Failed to fetch Railway orders", detail: error?.message });
+  }
+});
+
+// Get orders from Microservice (user current)
+router.get("/analytics/microservice/orders", async (req, res) => {
+  const url = new URL("/api/orders/my-orders", ECOM_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, ECOM_AUTH_TOKEN);
+    const rawToken = headers.Authorization ? headers.Authorization.replace(/^Bearer\s+/i, "") : "";
+    if (rawToken) {
+      headers["x-access-token"] = rawToken;
+      headers.token = rawToken;
+    }
+    headers["Content-Type"] = "application/json";
+    console.log("Analytics - Microservice orders", {
+      url: url.toString(),
+      hasAuth: Boolean(headers.Authorization),
+    });
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    return res.status(result.status).json(result.data || []);
+  } catch (error) {
+    console.error("Analytics - Microservice orders proxy failed:", error?.message || error);
+    return res.status(502).json({ error: "Failed to fetch Microservice orders", detail: error?.message });
+  }
+});
+
+// Get orders from Phone Store
+router.get("/analytics/phonestore/orders", async (req, res) => {
+  const username = req.query.username;
+  const url = new URL("/api/orders", PHONESTORE_BASE_URL);
+  try {
+    const headers = buildForwardHeaders(req, {}, "");
+    headers.Cookie = buildPhoneStoreCookie(username || "");
+
+    console.log("Analytics - PhoneStore orders", {
+      url: url.toString(),
+      hasCookie: Boolean(headers.Cookie),
+    });
+    const result = await forwardRequest(url.toString(), {
+      method: "GET",
+      headers,
+    });
+    return res.status(result.status).json(result.data || []);
+  } catch (error) {
+    console.error("Analytics - PhoneStore orders proxy failed:", error?.message || error);
+    return res.status(502).json({ error: "Failed to fetch PhoneStore orders", detail: error?.message });
+  }
+});
+
 module.exports = router;

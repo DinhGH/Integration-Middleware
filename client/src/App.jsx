@@ -20,8 +20,10 @@ import ProductsSection from "./components/sections/ProductsSection";
 import CartDrawer from "./components/cart/CartDrawer";
 import CheckoutModal from "./components/modals/CheckoutModal";
 import OrdersModal from "./components/modals/OrdersModal";
+import Dashboard from "./components/Dashboard";
 
 function App() {
+  const [currentView, setCurrentView] = useState("products"); // "products" or "dashboard"
   const [databases, setDatabases] = useState([]);
   const [selectedDb, setSelectedDb] = useState(null);
   const [tables, setTables] = useState([]);
@@ -780,9 +782,17 @@ function App() {
         cartCount={cartCount}
         databasesCount={databases.length}
         tablesCount={tables.length}
+        currentView={currentView}
+        onChangeView={setCurrentView}
+        showSummary={currentView === "products"}
+        showSearch={currentView === "products"}
       />
 
-      <main className="mx-auto -mt-8 w-full max-w-6xl space-y-6 px-6 pb-16">
+      {/* Conditional rendering based on currentView */}
+      {currentView === "dashboard" ? (
+        <Dashboard />
+      ) : (
+        <main className="mx-auto -mt-8 w-full max-w-6xl space-y-6 px-6 pb-16">
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             ⚠️ {error}
@@ -819,6 +829,8 @@ function App() {
           formatPrice={formatPrice}
         />
       </main>
+      )}
+
       <CartDrawer
         open={cartOpen}
         cartItems={cartItems}
