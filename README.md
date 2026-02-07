@@ -1,21 +1,60 @@
-# Multi Database Viewer Application
+# Integration Middleware - Multi Database Viewer
 
-Ứng dụng cho phép xem dữ liệu từ 2 cơ sở dữ liệu MySQL khác nhau trên cùng một giao diện web.
+Ứng dụng web giúp xem và so sánh dữ liệu từ nhiều cơ sở dữ liệu MySQL trong cùng một giao diện, gồm backend API và frontend dashboard.
 
 ## Cấu trúc Dự án
 
 ```
-multi-db-app/
-├── server/                  # Backend Express.js
-│   ├── index.js            # Server chính
-│   ├── .env                # Biến môi trường (database URLs)
-│   └── package.json        # Dependencies
-├── client/                 # Frontend React + Vite
+Integration-Middleware/
+├── README.md
+├── client/                         # Frontend React + Vite
+│   ├── public/
 │   ├── src/
-│   │   ├── App.jsx        # Component chính
-│   │   ├── App.css        # Styles
-│   │   └── main.jsx       # Entry point
-│   └── package.json       # Dependencies
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   ├── main.jsx
+│   │   ├── assets/
+│   │   ├── components/
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── cart/
+│   │   │   │   └── CartDrawer.jsx
+│   │   │   ├── chat/
+│   │   │   │   └── ChatWidget.jsx
+│   │   │   ├── layout/
+│   │   │   │   └── AppHeader.jsx
+│   │   │   ├── modals/
+│   │   │   │   ├── CheckoutModal.jsx
+│   │   │   │   └── OrdersModal.jsx
+│   │   │   └── sections/
+│   │   │       ├── DatabaseSelector.jsx
+│   │   │       ├── OrdersSection.jsx
+│   │   │       └── ProductsSection.jsx
+│   │   ├── config/
+│   │   │   └── env.js
+│   │   └── utils/
+│   │       ├── productHelpers.js
+│   │       └── tableHelpers.js
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+└── server/                         # Backend Express.js
+  ├── index.js
+  ├── package.json
+  └── src/
+    ├── index.js
+    ├── config/
+    │   ├── databases.js
+    │   └── env.js
+    ├── db/
+    │   ├── pools.js
+    │   └── queries.js
+    ├── routes/
+    │   ├── aiRoutes.js
+    │   ├── analyticsRoutes.js
+    │   ├── dbRoutes.js
+    │   └── proxyRoutes.js
+    └── utils/
+      └── http.js
 ```
 
 ## Cơ Sở Dữ Liệu
