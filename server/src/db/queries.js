@@ -126,4 +126,59 @@ async function getTableStructure(dbName, tableName) {
   }
 }
 
-module.exports = { getTables, getTableData, getTableStructure };
+async function getBestSellingProducts(dbName) {
+  try {
+    const config = dbConfigs[dbName];
+    const pool = pools[dbName];
+
+    if (config.type === "mysql") {
+      const connection = await pool.getConnection();
+
+      const [rows] = await connection.query(`
+        SELECT 
+          p.product_id, 
+          p.category_name, 
+          p.description, 
+          p.is_available, 
+          p.price, 
+          p.name,
+          p.image_url
+        FROM products p
+        ORDER BY p.price DESC
+        LIMIT 100
+      `);
+
+      connection.release();
+      return rows || [];
+    }
+
+    if (config.type === "mssql") {
+      if (!pool) {
+        throw new Error("SQL Server pool is not connected.");
+      }
+
+      const schema = config.schema || "dbo";
+      const result = await pool.request().query(`
+        SELECT TOP (100)
+          p.product_id, 
+          p.category_name, 
+          p.description, 
+          p.is_available, 
+          p.price, 
+          p.name,
+          COALESCE(p.image_url, p.imageurl, '') AS image_url
+        FROM [${schema}].[Product] p
+        ORDER BY p.price DESC
+      `);
+
+      return result.recordset || [];
+    }
+
+    throw new Error(`Unsupported database type for '${dbName}'.`);
+  } catch (error) {
+    console.error(`Error getting best-selling products from ${dbName}:`, error);
+    return [];
+  }
+}
+
+module.exports = { getTables, getTableData, getTableStructure, getBestSellingProducts };

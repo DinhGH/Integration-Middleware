@@ -1,16 +1,27 @@
 const ProductsSection = ({
   show,
   showAll,
+  showBestSelling,
   selectedDb,
   selectedTable,
   filteredProducts,
   loading,
   loadingAll,
+  loadingBestSelling,
   onAddToCart,
   formatPrice,
 }) => {
   if (!show) {
     return null;
+  }
+
+  let sectionTitle = "Tất cả sản phẩm";
+  if (showBestSelling) {
+    sectionTitle = "Sản phẩm bán chạy nhất";
+  } else if (!showAll) {
+    sectionTitle = `Sản phẩm từ ${selectedDb}${
+      selectedTable ? `.${selectedTable}` : ""
+    }`;
   }
 
   return (
@@ -20,18 +31,12 @@ const ProductsSection = ({
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">
-            {showAll
-              ? "Tất cả sản phẩm"
-              : `Sản phẩm từ ${selectedDb}${
-                  selectedTable ? `.${selectedTable}` : ""
-                }`}
-          </h2>
+          <h2 className="text-lg font-semibold">{sectionTitle}</h2>
           <p className="text-sm text-slate-500">
             {filteredProducts.length} sản phẩm khả dụng
           </p>
         </div>
-        {(loadingAll || loading) && (
+        {(loadingAll || loading || loadingBestSelling) && (
           <span className="text-sm text-slate-500">Đang tải...</span>
         )}
       </div>
@@ -53,6 +58,11 @@ const ProductsSection = ({
                   <span>•</span>
                   <span>{product.sourceTable}</span>
                 </div>
+                {product.totalSold !== undefined && (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+                    🔥 Đã bán: {product.totalSold}
+                  </div>
+                )}
                 <h3 className="text-sm font-semibold text-slate-900">
                   {product.name}
                 </h3>
@@ -70,7 +80,7 @@ const ProductsSection = ({
           ))}
         </div>
       ) : (
-        !loadingAll && (
+        !loadingAll && !loadingBestSelling && (
           <p className="text-sm text-slate-500">
             Không có sản phẩm để hiển thị.
           </p>

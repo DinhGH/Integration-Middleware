@@ -41,6 +41,9 @@ function App() {
   const [ordersError, setOrdersError] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
+  const [bestSellingProducts, setBestSellingProducts] = useState([]);
+  const [showBestSelling, setShowBestSelling] = useState(false);
+  const [loadingBestSelling, setLoadingBestSelling] = useState(false);
   const ordersPollingRef = useRef(false);
 
   const ORDER_POLL_INTERVAL_MS = 2000;
@@ -184,6 +187,53 @@ function App() {
       setLoadingAll(false);
     }
   }, [databases, fetchProductsForDb]);
+
+  const fetchBestSellingForDb = useCallback(async (dbName) => {
+    try {
+      const response = await fetch(`${API_URL}/${dbName}/best-selling`);
+      if (!response.ok) {
+        console.error(`Failed to fetch best-selling for ${dbName}:`, response.status);
+        return [];
+      }
+      
+      const data = await response.json();
+      return (data.bestSellingProducts || []).map((row, rowIndex) => {
+        const item = buildCartItem({
+          row,
+          rowIndex,
+          selectedDb: dbName,
+          selectedTable: "best_selling",
+        });
+        const image = getRowImage(item.raw || row);
+        return {
+          ...item,
+          image,
+          sourceDb: dbName,
+          sourceTable: "best_selling",
+          rowIndex,
+          totalSold: row.total_sold || 0,
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch best-selling products for", dbName, err);
+      return [];
+    }
+  }, []);
+
+  const loadBestSellingProducts = useCallback(async () => {
+    try {
+      setLoadingBestSelling(true);
+      setShowBestSelling(true);
+      setShowAll(true);
+      const results = await Promise.all(
+        databases.map((dbName) => fetchBestSellingForDb(dbName)),
+      );
+      const merged = results.flat().sort((a, b) => (b.totalSold || 0) - (a.totalSold || 0));
+      setBestSellingProducts(merged);
+    } finally {
+      setLoadingBestSelling(false);
+    }
+  }, [databases, fetchBestSellingForDb]);
 
   useEffect(() => {
     if (!databases.length || allProducts.length || loadingAll) {
@@ -416,6 +466,10 @@ function App() {
     ordersPollingRef.current = false;
     setOrdersLoading(false);
   }, [fetchOrdersOnce]);
+
+  const handleShowBestSelling = () => {
+    loadBestSellingProducts();
+  };
 
   const handleCheckout = async () => {
     setCheckoutOpen(true);
@@ -765,7 +819,7 @@ function App() {
       rowIndex,
     };
   });
-  const displayProducts = showAll ? allProducts : products;
+  const displayProducts = showBestSelling ? bestSellingProducts : showAll ? allProducts : products;
   const filteredProducts = displayProducts.filter((product) =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -777,6 +831,7 @@ function App() {
         onSearchChange={setSearchTerm}
         onOpenOrders={openOrdersModal}
         onToggleCart={toggleCart}
+        onShowBestSelling={handleShowBestSelling}
         cartCount={cartCount}
         databasesCount={databases.length}
         tablesCount={tables.length}
@@ -808,13 +863,15 @@ function App() {
         />
 
         <ProductsSection
-          show={showAll || Boolean(selectedDb)}
+          show={showAll || showBestSelling || Boolean(selectedDb)}
           showAll={showAll}
+          showBestSelling={showBestSelling}
           selectedDb={selectedDb}
           selectedTable={selectedTable}
           filteredProducts={filteredProducts}
           loading={loading}
           loadingAll={loadingAll}
+          loadingBestSelling={loadingBestSelling}
           onAddToCart={addProductToCart}
           formatPrice={formatPrice}
         />
