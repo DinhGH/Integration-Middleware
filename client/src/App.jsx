@@ -48,6 +48,10 @@ function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
   const [popupBlockedTargets, setPopupBlockedTargets] = useState([]);
+  const [bestSellingProducts, setBestSellingProducts] = useState([]);
+  const [showBestSelling, setShowBestSelling] = useState(false);
+  const [loadingBestSelling, setLoadingBestSelling] = useState(false);
+  const [bestSellingSourceFilter, setBestSellingSourceFilter] = useState("all");
   const ordersPollingRef = useRef(false);
 
   const ORDER_POLL_INTERVAL_MS = 2000;
@@ -187,103 +191,11 @@ function App() {
       );
       const merged = results.flat();
       setAllProducts(merged);
+      return merged;
     } finally {
       setLoadingAll(false);
     }
   }, [databases, fetchProductsForDb]);
-
-  useEffect(() => {
-    if (!databases.length || allProducts.length || loadingAll) {
-      return;
-    }
-    loadAllProducts();
-  }, [databases, allProducts.length, loadingAll, loadAllProducts]);
-
-  const normalizeCartItems = (items, sourceDb) => {
-    const list = Array.isArray(items)
-      ? items
-      : Array.isArray(items?.cartItems)
-        ? items.cartItems
-        : [];
-    return list.map((entry) => {
-      const product = entry.product || entry;
-      const productId =
-        entry.productId ??
-        product?.productId ??
-        product?.id ??
-        entry.id ??
-        entry.cartItemId;
-      const keyId = entry.cartItemId ?? productId ?? entry.id;
-      const name = product.name || product.title || entry.name || "Sản phẩm";
-      const price =
-        product.price ||
-        product.original ||
-        entry.price ||
-        product.unitPrice ||
-        0;
-      const image = getRowImage(product);
-      return {
-        key: `${sourceDb}-${keyId ?? "unknown"}`,
-        id: productId,
-        name,
-        price,
-        quantity: entry.quantity || 1,
-        sourceDb,
-        sourceTable: "cart",
-        image,
-      };
-    });
-  };
-
-  const refreshRemoteCart = useCallback(async () => {
-    try {
-      const [ecomResponse, phoneResponse, railwayResponse] = await Promise.all([
-        fetch(`${ECOM_BASE_URL}/api/cart`, {
-          credentials: "include",
-          headers: ECOM_AUTH_TOKEN
-            ? { Authorization: `Bearer ${ECOM_AUTH_TOKEN}` }
-            : undefined,
-        }),
-        fetch(
-          `${API_URL}/proxy/phonestore/cart?username=${encodeURIComponent(
-            PHONESTORE_USERNAME,
-          )}`,
-          { credentials: "include" },
-        ),
-        fetch(
-          `${API_URL}/proxy/railway/cart?userId=${RAILWAY_USER_ID}&cartId=${RAILWAY_CART_ID}`,
-          {
-            credentials: "include",
-            headers: RAILWAY_AUTH_TOKEN
-              ? { Authorization: `Bearer ${RAILWAY_AUTH_TOKEN}` }
-              : undefined,
-          },
-        ),
-      ]);
-
-      const [ecomData, phoneData, railwayData] = await Promise.all([
-        ecomResponse.json().catch(() => []),
-        phoneResponse.json().catch(() => []),
-        railwayResponse.json().catch(() => []),
-      ]);
-
-      const merged = [
-        ...normalizeCartItems(
-          Array.isArray(ecomData) ? ecomData : [],
-          "microservice",
-        ),
-        ...normalizeCartItems(
-          Array.isArray(phoneData) ? phoneData : [],
-          "phonewebsite",
-        ),
-        ...normalizeCartItems(railwayData, "railway"),
-      ];
-
-      setCartItems(merged);
-    } catch (err) {
-      setCartSyncError(`Failed to load cart: ${err.message}`);
-    }
-  }, []);
 
   const normalizeOrders = (list, sourceDb) => {
     const ordersList = Array.isArray(list) ? list : [];
@@ -375,6 +287,194 @@ function App() {
     return { mergedOrders, allOk };
   }, []);
 
+  const loadBestSellingProducts = useCallback(async () => {
+    try {
+      setLoadingBestSelling(true);
+      setShowBestSelling(true);
+      setShowAll(true);
+
+      const productsList = allProducts.length
+        ? allProducts
+        : await loadAllProducts();
+
+      const { mergedOrders } = await fetchOrdersOnce();
+      setOrders(mergedOrders);
+
+      const buildItemList = (order) => {
+        const raw = order?.raw ?? order ?? {};
+        const candidates = [
+          raw.items,
+          raw.orderItems,
+          raw.order_items,
+          raw.orderItem,
+          raw.products,
+        ];
+
+        for (const candidate of candidates) {
+          if (Array.isArray(candidate)) return candidate;
+        }
+
+        if (raw.items && typeof raw.items === "object") return [raw.items];
+        if (raw.orderItem && typeof raw.orderItem === "object") return [raw.orderItem];
+        return [];
+      };
+
+      const resolveProductId = (item) =>
+        item?.product_id ??
+        item?.productId ??
+        item?.product?.productId ??
+        item?.product?.product_id ??
+        item?.product?.id ??
+        item?.id ??
+        item?.itemId ??
+        item?.item_id;
+
+      const resolveQuantity = (item) => {
+        const qty =
+          item?.quantity ??
+          item?.qty ??
+          item?.count ??
+          item?.amount ??
+          item?.units;
+        const numeric = Number(qty);
+        return Number.isFinite(numeric) ? numeric : 1;
+      };
+
+      const productIndex = new Map();
+      productsList.forEach((product) => {
+        if (product?.id === undefined || product?.id === null) return;
+        const key = `${product.sourceDb}:${product.id}`;
+        if (!productIndex.has(key)) {
+          productIndex.set(key, product);
+        }
+      });
+
+      const salesMap = new Map();
+      mergedOrders.forEach((order) => {
+        const sourceDb = order.sourceDb === "ecom" ? "microservice" : order.sourceDb;
+        const items = buildItemList(order);
+        items.forEach((item) => {
+          const productId = resolveProductId(item);
+          if (productId === undefined || productId === null) return;
+          const key = `${sourceDb}:${productId}`;
+          const next = (salesMap.get(key) || 0) + resolveQuantity(item);
+          salesMap.set(key, next);
+        });
+      });
+
+      const merged = Array.from(salesMap.entries())
+        .map(([key, totalSold]) => {
+          const product = productIndex.get(key);
+          if (!product) return null;
+          return {
+            ...product,
+            totalSold,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          if ((b.totalSold || 0) !== (a.totalSold || 0)) {
+            return (b.totalSold || 0) - (a.totalSold || 0);
+          }
+          return (b.price || 0) - (a.price || 0);
+        });
+
+      setBestSellingProducts(merged);
+    } finally {
+      setLoadingBestSelling(false);
+    }
+  }, [allProducts, loadAllProducts, fetchOrdersOnce]);
+
+  useEffect(() => {
+    if (!databases.length || allProducts.length || loadingAll) {
+      return;
+    }
+    loadAllProducts();
+  }, [databases, allProducts.length, loadingAll, loadAllProducts]);
+
+  const normalizeCartItems = (items, sourceDb) => {
+    const list = Array.isArray(items)
+      ? items
+      : Array.isArray(items?.cartItems)
+        ? items.cartItems
+        : [];
+    return list.map((entry) => {
+      const product = entry.product || entry;
+      const productId =
+        entry.productId ??
+        product?.productId ??
+        product?.id ??
+        entry.id ??
+        entry.cartItemId;
+      const keyId = entry.cartItemId ?? productId ?? entry.id;
+      const name = product.name || product.title || entry.name || "Sản phẩm";
+      const price =
+        product.price ||
+        product.original ||
+        entry.price ||
+        product.unitPrice ||
+        0;
+      const image = getRowImage(product);
+      return {
+        key: `${sourceDb}-${keyId ?? "unknown"}`,
+        id: productId,
+        name,
+        price,
+        quantity: entry.quantity || 1,
+        sourceDb,
+        sourceTable: "cart",
+        image,
+      };
+    });
+  };
+
+  const refreshRemoteCart = useCallback(async () => {
+    try {
+      const [ecomResponse, phoneResponse, railwayResponse] = await Promise.all([
+        fetch(`${ECOM_BASE_URL}/api/cart`, {
+          credentials: "include",
+          headers: ECOM_AUTH_TOKEN
+            ? { Authorization: `Bearer ${ECOM_AUTH_TOKEN}` }
+            : undefined,
+        }),
+        fetch(
+          `${API_URL}/proxy/phonestore/cart?username=${encodeURIComponent(
+            PHONESTORE_USERNAME,
+          )}`,
+          { credentials: "include" },
+        ),
+        fetch(
+          `${API_URL}/proxy/railway/cart?userId=${RAILWAY_USER_ID}&cartId=${RAILWAY_CART_ID}`,
+          {
+            credentials: "include",
+            headers: RAILWAY_AUTH_TOKEN
+              ? { Authorization: `Bearer ${RAILWAY_AUTH_TOKEN}` }
+              : undefined,
+          },
+        ),
+      ]);
+
+      const [ecomData, phoneData, railwayData] = await Promise.all([
+        ecomResponse.json().catch(() => []),
+        phoneResponse.json().catch(() => []),
+        railwayResponse.json().catch(() => []),
+      ]);
+
+      const merged = [
+        ...normalizeCartItems(Array.isArray(ecomData) ? ecomData : [], "ecom"),
+        ...normalizeCartItems(
+          Array.isArray(phoneData) ? phoneData : [],
+          "phonewebsite",
+        ),
+        ...normalizeCartItems(railwayData, "railway"),
+      ];
+
+      setCartItems(merged);
+    } catch (err) {
+      setCartSyncError(`Failed to load cart: ${err.message}`);
+    }
+  }, []);
+
   const fetchOrdersOnceAndUpdate = useCallback(async () => {
     setOrdersLoading(true);
     setOrdersError(null);
@@ -459,6 +559,15 @@ function App() {
     });
 
     setPopupBlockedTargets(blocked);
+  };
+
+  const handleShowBestSelling = () => {
+    loadBestSellingProducts();
+  };
+
+  const handleBestSellingBack = () => {
+    setShowBestSelling(false);
+    setShowAll(true);
   };
 
   const handleCheckout = async () => {
@@ -816,10 +925,15 @@ function App() {
       rowIndex,
     };
   });
-  const displayProducts = showAll ? allProducts : products;
-  const filteredProducts = displayProducts.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const displayProducts = showBestSelling ? bestSellingProducts : showAll ? allProducts : products;
+  const filteredProducts = displayProducts
+    .filter((product) =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    )
+    .filter((product) => {
+      if (!showBestSelling || bestSellingSourceFilter === "all") return true;
+      return product.sourceDb === bestSellingSourceFilter;
+    });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -828,6 +942,7 @@ function App() {
         onSearchChange={setSearchTerm}
         onOpenOrders={openOrdersModal}
         onToggleCart={toggleCart}
+        onShowBestSelling={handleShowBestSelling}
         cartCount={cartCount}
         databasesCount={databases.length}
         tablesCount={tables.length}
@@ -867,14 +982,19 @@ function App() {
         />
 
         <ProductsSection
-          show={showAll || Boolean(selectedDb)}
+          show={showAll || showBestSelling || Boolean(selectedDb)}
           showAll={showAll}
+          showBestSelling={showBestSelling}
           selectedDb={selectedDb}
           selectedTable={selectedTable}
           filteredProducts={filteredProducts}
           loading={loading}
           loadingAll={loadingAll}
+          loadingBestSelling={loadingBestSelling}
           onAddToCart={addProductToCart}
+          onBestSellingBack={handleBestSellingBack}
+          bestSellingSourceFilter={bestSellingSourceFilter}
+          onBestSellingSourceChange={setBestSellingSourceFilter}
           formatPrice={formatPrice}
         />
       </main>

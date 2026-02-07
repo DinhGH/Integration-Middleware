@@ -10,6 +10,7 @@ const AppHeader = ({
   onChangeView,
   showSummary = true,
   showSearch = true,
+  onShowBestSelling,
 }) => {
   return (
     <header className="bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -57,6 +58,12 @@ const AppHeader = ({
               onChange={(event) => onSearchChange(event.target.value)}
             />
           )}
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+            onClick={onShowBestSelling}
+          >
+            🔥 Bán chạy
+          </button>
           <button
             className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
             onClick={onOpenOrders}

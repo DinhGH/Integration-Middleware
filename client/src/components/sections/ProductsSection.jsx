@@ -1,16 +1,30 @@
 const ProductsSection = ({
   show,
   showAll,
+  showBestSelling,
   selectedDb,
   selectedTable,
   filteredProducts,
   loading,
   loadingAll,
+  loadingBestSelling,
   onAddToCart,
+  onBestSellingBack,
+  bestSellingSourceFilter,
+  onBestSellingSourceChange,
   formatPrice,
 }) => {
   if (!show) {
     return null;
+  }
+
+  let sectionTitle = "Tất cả sản phẩm";
+  if (showBestSelling) {
+    sectionTitle = "Sản phẩm bán chạy nhất";
+  } else if (!showAll) {
+    sectionTitle = `Sản phẩm từ ${selectedDb}${
+      selectedTable ? `.${selectedTable}` : ""
+    }`;
   }
 
   return (
@@ -20,20 +34,41 @@ const ProductsSection = ({
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">
-            {showAll
-              ? "Tất cả sản phẩm"
-              : `Sản phẩm từ ${selectedDb}${
-                  selectedTable ? `.${selectedTable}` : ""
-                }`}
-          </h2>
+          <h2 className="text-lg font-semibold">{sectionTitle}</h2>
           <p className="text-sm text-slate-500">
             {filteredProducts.length} sản phẩm khả dụng
           </p>
         </div>
-        {(loadingAll || loading) && (
-          <span className="text-sm text-slate-500">Đang tải...</span>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {showBestSelling && (
+            <>
+              <button
+                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                onClick={onBestSellingBack}
+              >
+                ⬅ Quay lại
+              </button>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <span>Nguồn:</span>
+                <select
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700"
+                  value={bestSellingSourceFilter}
+                  onChange={(event) =>
+                    onBestSellingSourceChange(event.target.value)
+                  }
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="microservice">Microservice</option>
+                  <option value="railway">Railway</option>
+                  <option value="phonewebsite">Phone Store</option>
+                </select>
+              </div>
+            </>
+          )}
+          {(loadingAll || loading || loadingBestSelling) && (
+            <span className="text-sm text-slate-500">Đang tải...</span>
+          )}
+        </div>
       </div>
       {filteredProducts.length > 0 ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -53,6 +88,11 @@ const ProductsSection = ({
                   <span>•</span>
                   <span>{product.sourceTable}</span>
                 </div>
+                {product.totalSold !== undefined && (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+                    🔥 Đã bán: {product.totalSold}
+                  </div>
+                )}
                 <h3 className="text-sm font-semibold text-slate-900">
                   {product.name}
                 </h3>
@@ -70,7 +110,7 @@ const ProductsSection = ({
           ))}
         </div>
       ) : (
-        !loadingAll && (
+        !loadingAll && !loadingBestSelling && (
           <p className="text-sm text-slate-500">
             Không có sản phẩm để hiển thị.
           </p>
