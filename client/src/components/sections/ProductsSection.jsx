@@ -9,6 +9,9 @@ const ProductsSection = ({
   loadingAll,
   loadingBestSelling,
   onAddToCart,
+  onBestSellingBack,
+  bestSellingSourceFilter,
+  onBestSellingSourceChange,
   formatPrice,
 }) => {
   if (!show) {
@@ -36,9 +39,36 @@ const ProductsSection = ({
             {filteredProducts.length} sản phẩm khả dụng
           </p>
         </div>
-        {(loadingAll || loading || loadingBestSelling) && (
-          <span className="text-sm text-slate-500">Đang tải...</span>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {showBestSelling && (
+            <>
+              <button
+                className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                onClick={onBestSellingBack}
+              >
+                ⬅ Quay lại
+              </button>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <span>Nguồn:</span>
+                <select
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700"
+                  value={bestSellingSourceFilter}
+                  onChange={(event) =>
+                    onBestSellingSourceChange(event.target.value)
+                  }
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="microservice">Microservice</option>
+                  <option value="railway">Railway</option>
+                  <option value="phonewebsite">Phone Store</option>
+                </select>
+              </div>
+            </>
+          )}
+          {(loadingAll || loading || loadingBestSelling) && (
+            <span className="text-sm text-slate-500">Đang tải...</span>
+          )}
+        </div>
       </div>
       {filteredProducts.length > 0 ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

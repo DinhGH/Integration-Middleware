@@ -1,7 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const RAILWAY_BASE_URL = "https://test-9she.onrender.com";
 const ECOM_BASE_URL = "https://ecommerce-integration.onrender.com";
-const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "1";
+const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "2";
 const RAILWAY_CART_ID = import.meta.env.VITE_RAILWAY_CART_ID || "1";
 const RAILWAY_AUTH_TOKEN = import.meta.env.VITE_RAILWAY_AUTH_TOKEN || "";
 const ECOM_AUTH_TOKEN = import.meta.env.VITE_ECOM_AUTH_TOKEN || "";
