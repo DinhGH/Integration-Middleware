@@ -144,7 +144,7 @@ GET /api/health
 
 ## Tính Năng
 
-- ✅ Kết nối đến 2 cơ sở dữ liệu MySQL
+- ✅ Kết nối đến 3 cơ sở dữ liệu MySQL
 - ✅ Hiển thị danh sách tất cả bảng
 - ✅ Xem dữ liệu từ bất kỳ bảng nào
 - ✅ Hiển thị thông tin cột (tên, kiểu dữ liệu, khóa chính)
@@ -187,4 +187,4 @@ GET /api/health
 
 ## Tác Giả
 
-Multi Database Viewer - 2026
+Group 1 | Group 2 | Group 3 - 2026
