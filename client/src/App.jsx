@@ -21,6 +21,7 @@ import CartDrawer from "./components/cart/CartDrawer";
 import CheckoutModal from "./components/modals/CheckoutModal";
 import OrdersModal from "./components/modals/OrdersModal";
 import Dashboard from "./components/Dashboard";
+import ChatWidget from "./components/chat/ChatWidget";
 
 function App() {
   const [currentView, setCurrentView] = useState("products"); // "products" or "dashboard"
@@ -859,6 +860,8 @@ function App() {
         onRefresh={fetchOrdersOnceAndUpdate}
         formatPrice={formatPrice}
       />
+
+      <ChatWidget currentView={currentView} />
     </div>
   );
 }

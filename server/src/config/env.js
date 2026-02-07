@@ -17,6 +17,7 @@ const RAILWAY_AUTH_TOKEN = process.env.RAILWAY_AUTH_TOKEN || "";
 const ECOM_AUTH_TOKEN = process.env.ECOM_AUTH_TOKEN || "";
 const RAILWAY_USER_ID = process.env.RAILWAY_USER_ID || "";
 const PHONESTORE_USERNAME = process.env.PHONESTORE_USERNAME || "";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 
 module.exports = {
   PORT,
@@ -28,4 +29,5 @@ module.exports = {
   ECOM_AUTH_TOKEN,
   RAILWAY_USER_ID,
   PHONESTORE_USERNAME,
+  GROQ_API_KEY,
 };
