@@ -1,3 +1,5 @@
+import { PHONESTORE_BASE_URL } from "../config/env";
+
 const getValueCaseInsensitive = (row, aliases) => {
   const keyMap = Object.keys(row || {}).reduce((acc, key) => {
     acc[key.toLowerCase()] = key;
@@ -37,6 +39,17 @@ const findNumericId = (row, selectedDb) => {
     }
   }
   return null;
+};
+
+const normalizePhoneStoreImageUrl = (imageUrl) => {
+  if (!imageUrl) return "";
+  const raw = String(imageUrl).trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const base = PHONESTORE_BASE_URL.replace(/\/$/, "");
+  const path = raw.startsWith("/") ? raw : `/${raw}`;
+  return `${base}${path}`;
 };
 
 const buildPhoneStoreProduct = (row, rowIndex, selectedDb) => {
@@ -85,7 +98,7 @@ const buildPhoneStoreProduct = (row, rowIndex, selectedDb) => {
     name: name ?? `Item ${rowIndex + 1}`,
     discount: discount ?? 0,
     original: original ?? 0,
-    imageUrl: imageUrl ?? "",
+    imageUrl: normalizePhoneStoreImageUrl(imageUrl),
   };
 };
 
