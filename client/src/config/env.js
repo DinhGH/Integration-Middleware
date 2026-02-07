@@ -1,6 +1,15 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const RAILWAY_BASE_URL = "https://test-9she.onrender.com";
 const ECOM_BASE_URL = "https://ecommerce-integration.onrender.com";
+const PHONESTORE_FRONTEND_URL =
+  import.meta.env.VITE_PHONESTORE_FRONTEND_URL ||
+  "https://phone-store-dinh.vercel.app/";
+const RAILWAY_FRONTEND_URL =
+  import.meta.env.VITE_RAILWAY_FRONTEND_URL ||
+  "https://test-frontend-8ugs.onrender.com/";
+const ECOM_FRONTEND_URL =
+  import.meta.env.VITE_ECOM_FRONTEND_URL ||
+  "https://ecommerce-integration.vercel.app/";
 const RAILWAY_USER_ID = import.meta.env.VITE_RAILWAY_USER_ID || "1";
 const RAILWAY_CART_ID = import.meta.env.VITE_RAILWAY_CART_ID || "1";
 const RAILWAY_AUTH_TOKEN = import.meta.env.VITE_RAILWAY_AUTH_TOKEN || "";
@@ -12,6 +21,9 @@ export {
   API_URL,
   RAILWAY_BASE_URL,
   ECOM_BASE_URL,
+  PHONESTORE_FRONTEND_URL,
+  RAILWAY_FRONTEND_URL,
+  ECOM_FRONTEND_URL,
   RAILWAY_USER_ID,
   RAILWAY_CART_ID,
   RAILWAY_AUTH_TOKEN,

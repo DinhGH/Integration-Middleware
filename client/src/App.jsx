@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   API_URL,
   ECOM_BASE_URL,
+  ECOM_FRONTEND_URL,
   RAILWAY_USER_ID,
   RAILWAY_CART_ID,
   RAILWAY_AUTH_TOKEN,
   ECOM_AUTH_TOKEN,
   PHONESTORE_USERNAME,
+  PHONESTORE_FRONTEND_URL,
+  RAILWAY_FRONTEND_URL,
 } from "./config/env";
 import { buildCartItem, pickPhoneTable } from "./utils/tableHelpers";
 import {
@@ -44,6 +47,7 @@ function App() {
   const [ordersError, setOrdersError] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
+  const [popupBlockedTargets, setPopupBlockedTargets] = useState([]);
   const ordersPollingRef = useRef(false);
 
   const ORDER_POLL_INTERVAL_MS = 2000;
@@ -264,7 +268,10 @@ function App() {
       ]);
 
       const merged = [
-        ...normalizeCartItems(Array.isArray(ecomData) ? ecomData : [], "ecom"),
+        ...normalizeCartItems(
+          Array.isArray(ecomData) ? ecomData : [],
+          "microservice",
+        ),
         ...normalizeCartItems(
           Array.isArray(phoneData) ? phoneData : [],
           "phonewebsite",
@@ -305,7 +312,7 @@ function App() {
   const fetchOrdersOnce = useCallback(async () => {
     const requests = [
       {
-        key: "ecom",
+        key: "microservice",
         request: fetch(`${ECOM_BASE_URL}/api/orders/my-orders`, {
           credentials: "include",
         }),
@@ -420,7 +427,42 @@ function App() {
     setOrdersLoading(false);
   }, [fetchOrdersOnce]);
 
+  const openLegacyCheckoutUrls = (items) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const sources = new Set(items.map((item) => item.sourceDb));
+    const targets = [
+      {
+        sourceDb: "phonewebsite",
+        url: PHONESTORE_FRONTEND_URL,
+        label: "Phone store",
+      },
+      { sourceDb: "railway", url: RAILWAY_FRONTEND_URL, label: "Railway" },
+      {
+        sourceDb: "microservice",
+        url: ECOM_FRONTEND_URL,
+        label: "Microservice",
+      },
+    ];
+
+    const blocked = [];
+
+    targets.forEach(({ sourceDb, url, label }) => {
+      if (sources.has(sourceDb) && url) {
+        const opened = window.open(url, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          blocked.push({ label, url });
+        }
+      }
+    });
+
+    setPopupBlockedTargets(blocked);
+  };
+
   const handleCheckout = async () => {
+    openLegacyCheckoutUrls(cartItems);
     setCheckoutOpen(true);
     await startOrdersPolling();
   };
@@ -428,6 +470,12 @@ function App() {
   const openOrdersModal = async () => {
     setOrdersModalOpen(true);
     await fetchOrdersOnceAndUpdate();
+  };
+
+  const handleViewOrders = async () => {
+    stopOrdersPolling();
+    setCheckoutOpen(false);
+    await openOrdersModal();
   };
 
   useEffect(() => {
@@ -846,8 +894,9 @@ function App() {
         open={checkoutOpen}
         ordersLoading={ordersLoading}
         ordersCount={orders.length}
+        blockedLegacyTargets={popupBlockedTargets}
         onClose={() => setCheckoutOpen(false)}
-        onRefresh={fetchOrdersOnceAndUpdate}
+        onRefresh={handleViewOrders}
         onStopPolling={stopOrdersPolling}
         onStartPolling={startOrdersPolling}
       />

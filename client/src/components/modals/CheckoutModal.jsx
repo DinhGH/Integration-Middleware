@@ -2,6 +2,7 @@ const CheckoutModal = ({
   open,
   ordersLoading,
   ordersCount,
+  blockedLegacyTargets,
   onClose,
   onRefresh,
   onStopPolling,
@@ -55,6 +56,27 @@ const CheckoutModal = ({
             </button>
           )}
         </div>
+        {blockedLegacyTargets?.length > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">
+              Trình duyệt có thể đã chặn mở nhiều tab. Hãy bật popup cho trang
+              này hoặc mở thủ công:
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {blockedLegacyTargets.map((target) => (
+                <a
+                  key={target.url}
+                  className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:border-amber-400"
+                  href={target.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Mở {target.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {!ordersLoading && ordersCount > 0 && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             Đã tổng hợp {ordersCount} đơn hàng. Bạn có thể xem ở mục "Đơn hàng
